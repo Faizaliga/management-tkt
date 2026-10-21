@@ -30,63 +30,6 @@ function saveToStorage() {
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
 }
 
-function resetDataToDefault() {
-    if (!confirm('Apakah Anda yakin ingin mengembalikan data ke sampel awal? Semua perubahan akan di-reset.')) {
-        return;
-    }
-
-    // Deep copy sample data agar tidak mutate referensi asli
-    incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA));
-    saveToStorage();
-
-    // Reset state aplikasi
-    currentPage = 1;
-
-    // Reset semua filter agar data langsung terlihat
-    const filterSearch = document.getElementById('filterSearch');
-    const filterMonth  = document.getElementById('filterMonth');
-    const filterSumber = document.getElementById('filterSumber');
-    const filterStatus = document.getElementById('filterStatus');
-
-    if (filterSearch) filterSearch.value = '';
-    if (filterMonth)  filterMonth.value  = '';
-    if (filterSumber) filterSumber.value = 'All';
-    if (filterStatus) filterStatus.value = 'All';
-
-    // Reset form input juga
-    resetForm();
-
-    // Render ulang semua tampilan (tabel, statistik, chart)
-    renderApp();
-
-    // Feedback ke user
-    alert('✅ Data berhasil di-reset ke sampel awal (' + incidents.length + ' data).');
-}
-
-// DYNAMIC CATEGORIES BASED ON SOURCE
-function updateSubCategoryOptions(selectedSub = '') {
-    const sumber = document.getElementById('inputSumber').value;
-    const kategoriSelect = document.getElementById('inputKategori');
-    
-    // Bersihkan opsi lama
-    kategoriSelect.innerHTML = '<option value="">-- Pilih Kategori --</option>';
-
-    if (sumber && SUB_CATEGORIES[sumber]) {
-        SUB_CATEGORIES[sumber].forEach(kat => {
-            const option = document.createElement('option');
-            option.value = kat;
-            option.textContent = kat;
-            // Jika ada kategori yang cocok (saat edit), pilih itu
-            if (kat === selectedSub) option.selected = true;
-            kategoriSelect.appendChild(option);
-        });
-
-        // JIKA BUKAN EDIT (tidak ada selectedSub), OTOMATIS PILIH OPSI PERTAMA
-        if (!selectedSub && SUB_CATEGORIES[sumber].length > 0) {
-            kategoriSelect.value = SUB_CATEGORIES[sumber][0];
-        }
-    }
-}
 
 // DOWNTIME CALCULATOR IN MINUTES
 function calculateDowntime() {
