@@ -9,27 +9,54 @@ let dailyTrendChartInstance = null;
 
 // INIT APP
 window.onload = function() {
-    // KITA HAPUS DATA LAMA DI LOCAL STORAGE (Hanya untuk membersihkan dummy)
-    // Hapus baris komentar di bawah ini jika data dummy sudah bersih
-    localStorage.removeItem(CONFIG.STORAGE_KEY); 
+    // Hapus data dummy lama di local storage (Hanya jika kamu ingin memulai dari nol)
+    // localStorage.removeItem(CONFIG.STORAGE_KEY); 
 
-    // Load data (sekarang akan kosong karena baru dihapus)
     const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
     if (stored) {
-        incidents = JSON.parse(stored);
+        try {
+            incidents = JSON.parse(stored);
+            if (!Array.isArray(incidents)) incidents = [];
+        } catch (e) {
+            incidents = [];
+        }
     } else {
-        // Karena kita sudah mengubah config.js menjadi [], maka ini akan kosong
-        incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA)); 
+        // Karena di config.js INITIAL_SAMPLE_DATA sudah [], ini akan kosong
+        incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
         saveToStorage();
     }
 
     document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
     renderApp();
 };
+
 function saveToStorage() {
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
 }
 
+// DYNAMIC CATEGORIES BASED ON SOURCE
+function updateSubCategoryOptions(selectedSub = '') {
+    const sumber = document.getElementById('inputSumber').value;
+    const kategoriSelect = document.getElementById('inputKategori');
+    
+    // Bersihkan opsi lama
+    kategoriSelect.innerHTML = '<option value="">-- Pilih Kategori --</option>';
+
+    if (sumber && SUB_CATEGORIES[sumber]) {
+        SUB_CATEGORIES[sumber].forEach(kat => {
+            const option = document.createElement('option');
+            option.value = kat;
+            option.textContent = kat;
+            if (kat === selectedSub) option.selected = true;
+            kategoriSelect.appendChild(option);
+        });
+
+        // Otomatis pilih opsi pertama jika tidak ada yang dipilih
+        if (!selectedSub && SUB_CATEGORIES[sumber].length > 0) {
+            kategoriSelect.value = SUB_CATEGORIES[sumber][0];
+        }
+    }
+}
 
 // DOWNTIME CALCULATOR IN MINUTES
 function calculateDowntime() {
@@ -62,7 +89,7 @@ function handleFormSubmit(e) {
     const sumberValue = document.getElementById('inputSumber').value;
     let kategoriValue = document.getElementById('inputKategori').value;
 
-    // Validasi Keamanan: Jika karena suatu hal kategori kosong, ambil default
+    // Validasi Keamanan: Jika kategori kosong, ambil otomatis dari data
     if (!kategoriValue && SUB_CATEGORIES[sumberValue]) {
         kategoriValue = SUB_CATEGORIES[sumberValue][0];
     }
@@ -73,7 +100,7 @@ function handleFormSubmit(e) {
         mitra: document.getElementById('inputMitra').value.trim(),
         idPelanggan: document.getElementById('inputIdPelanggan').value.trim(),
         sumber: sumberValue,
-        kategori: kategoriValue, // <-- Gunakan variabel yang sudah divalidasi
+        kategori: kategoriValue,
         jamMulai: document.getElementById('inputJamMulai').value,
         jamSelesai: document.getElementById('inputJamSelesai').value,
         downtime: parseInt(document.getElementById('inputDowntime').value) || 0,
@@ -81,7 +108,6 @@ function handleFormSubmit(e) {
         status: document.getElementById('inputStatus').value
     };
 
-    // ... (kode di bawahnya sama seperti sebelumnya: incidents[editIndex] = newItem atau unshift)
     if (editIndex >= 0) {
         incidents[editIndex] = newItem;
     } else {
@@ -92,13 +118,14 @@ function handleFormSubmit(e) {
     resetForm();
     renderApp();
 }
+
 function resetForm() {
     document.getElementById('incidentForm').reset();
     document.getElementById('editIndex').value = -1;
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report';
     document.getElementById('btnCancelEdit').classList.add('hidden');
     document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
-    updateSubCategoryOptions();
+    updateSubCategoryOptions(); // Ini yang tadi error, sekarang sudah aman
 }
 
 function editRecord(id) {
