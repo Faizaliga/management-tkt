@@ -1,5 +1,5 @@
 // Core Application Logic
-let incidents = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEY)) || INITIAL_SAMPLE_DATA;
+let incidents = [];
 let currentPage = 1;
 
 // Chart Instances
@@ -9,26 +9,66 @@ let dailyTrendChartInstance = null;
 
 // INIT APP
 window.onload = function() {
+    // KITA HAPUS DATA LAMA DI LOCAL STORAGE (Hanya untuk membersihkan dummy)
+    // Hapus baris komentar di bawah ini jika data dummy sudah bersih
+    localStorage.removeItem(CONFIG.STORAGE_KEY); 
+
+    // Load data (sekarang akan kosong karena baru dihapus)
+    const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
+    if (stored) {
+        incidents = JSON.parse(stored);
+    } else {
+        // Karena kita sudah mengubah config.js menjadi [], maka ini akan kosong
+        incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA)); 
+        saveToStorage();
+    }
+
     document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
     renderApp();
 };
-
 function saveToStorage() {
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
 }
 
 function resetDataToDefault() {
-    if (confirm('Apakah Anda yakin ingin mengembalikan data ke sampel awal? Semua perubahan akan di-reset.')) {
-        incidents = [...INITIAL_SAMPLE_DATA];
-        saveToStorage();
-        renderApp();
+    if (!confirm('Apakah Anda yakin ingin mengembalikan data ke sampel awal? Semua perubahan akan di-reset.')) {
+        return;
     }
+
+    // Deep copy sample data agar tidak mutate referensi asli
+    incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA));
+    saveToStorage();
+
+    // Reset state aplikasi
+    currentPage = 1;
+
+    // Reset semua filter agar data langsung terlihat
+    const filterSearch = document.getElementById('filterSearch');
+    const filterMonth  = document.getElementById('filterMonth');
+    const filterSumber = document.getElementById('filterSumber');
+    const filterStatus = document.getElementById('filterStatus');
+
+    if (filterSearch) filterSearch.value = '';
+    if (filterMonth)  filterMonth.value  = '';
+    if (filterSumber) filterSumber.value = 'All';
+    if (filterStatus) filterStatus.value = 'All';
+
+    // Reset form input juga
+    resetForm();
+
+    // Render ulang semua tampilan (tabel, statistik, chart)
+    renderApp();
+
+    // Feedback ke user
+    alert('✅ Data berhasil di-reset ke sampel awal (' + incidents.length + ' data).');
 }
 
 // DYNAMIC CATEGORIES BASED ON SOURCE
 function updateSubCategoryOptions(selectedSub = '') {
     const sumber = document.getElementById('inputSumber').value;
     const kategoriSelect = document.getElementById('inputKategori');
+    
+    // Bersihkan opsi lama
     kategoriSelect.innerHTML = '<option value="">-- Pilih Kategori --</option>';
 
     if (sumber && SUB_CATEGORIES[sumber]) {
@@ -36,9 +76,15 @@ function updateSubCategoryOptions(selectedSub = '') {
             const option = document.createElement('option');
             option.value = kat;
             option.textContent = kat;
+            // Jika ada kategori yang cocok (saat edit), pilih itu
             if (kat === selectedSub) option.selected = true;
             kategoriSelect.appendChild(option);
         });
+
+        // JIKA BUKAN EDIT (tidak ada selectedSub), OTOMATIS PILIH OPSI PERTAMA
+        if (!selectedSub && SUB_CATEGORIES[sumber].length > 0) {
+            kategoriSelect.value = SUB_CATEGORIES[sumber][0];
+        }
     }
 }
 
@@ -70,13 +116,21 @@ function handleFormSubmit(e) {
     e.preventDefault();
 
     const editIndex = parseInt(document.getElementById('editIndex').value);
+    const sumberValue = document.getElementById('inputSumber').value;
+    let kategoriValue = document.getElementById('inputKategori').value;
+
+    // Validasi Keamanan: Jika karena suatu hal kategori kosong, ambil default
+    if (!kategoriValue && SUB_CATEGORIES[sumberValue]) {
+        kategoriValue = SUB_CATEGORIES[sumberValue][0];
+    }
+
     const newItem = {
         id: editIndex >= 0 ? incidents[editIndex].id : Date.now(),
         tanggal: document.getElementById('inputTanggal').value,
         mitra: document.getElementById('inputMitra').value.trim(),
         idPelanggan: document.getElementById('inputIdPelanggan').value.trim(),
-        sumber: document.getElementById('inputSumber').value,
-        kategori: document.getElementById('inputKategori').value,
+        sumber: sumberValue,
+        kategori: kategoriValue, // <-- Gunakan variabel yang sudah divalidasi
         jamMulai: document.getElementById('inputJamMulai').value,
         jamSelesai: document.getElementById('inputJamSelesai').value,
         downtime: parseInt(document.getElementById('inputDowntime').value) || 0,
@@ -84,6 +138,7 @@ function handleFormSubmit(e) {
         status: document.getElementById('inputStatus').value
     };
 
+    // ... (kode di bawahnya sama seperti sebelumnya: incidents[editIndex] = newItem atau unshift)
     if (editIndex >= 0) {
         incidents[editIndex] = newItem;
     } else {
@@ -94,7 +149,6 @@ function handleFormSubmit(e) {
     resetForm();
     renderApp();
 }
-
 function resetForm() {
     document.getElementById('incidentForm').reset();
     document.getElementById('editIndex').value = -1;
