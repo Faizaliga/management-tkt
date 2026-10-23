@@ -3,8 +3,16 @@ const CONFIG = {
     APP_NAME: "ISP Network Operations Center",
     STORAGE_KEY: "isp_incidents_data_v3",
     ITEMS_PER_PAGE: 6,
-    DEFAULT_DATE: new Date().toISOString().split('T')[0]
+    DEFAULT_DATE: new Date().toISOString().split('T')[0],
+    
+    // KREDENSIAL SUPABASE
+    SUPABASE_URL: "https://rnhhiiyzpbgiutxjkmyt.supabase.co",
+    SUPABASE_ANON_KEY: "sb_publishable_QgVrSfhNiNmYNVAMFvZhSQ_zVUTruoN"
 };
+
+// Inisialisasi Klien Supabase Client SDK
+const { createClient } = supabase;
+const db = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 
 // Sub-kategori gangguan berdasarkan Sumber Masalah
 const SUB_CATEGORIES = {
@@ -25,5 +33,4 @@ const SUB_CATEGORIES = {
     ]
 };
 
-// Sample Data Awal (Jika LocalStorage kosong)
 const INITIAL_SAMPLE_DATA = [];
