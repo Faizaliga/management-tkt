@@ -9,9 +9,12 @@ let dailyTrendChartInstance = null;
 
 // INIT APP
 window.onload = function() {
-    // Hapus data dummy lama di local storage (Hanya jika kamu ingin memulai dari nol)
-    // localStorage.removeItem(CONFIG.STORAGE_KEY); 
+    loadFromStorage();
+    document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
+    renderApp();
+};
 
+function loadFromStorage() {
     const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
     if (stored) {
         try {
@@ -21,14 +24,10 @@ window.onload = function() {
             incidents = [];
         }
     } else {
-        // Karena di config.js INITIAL_SAMPLE_DATA sudah [], ini akan kosong
         incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
         saveToStorage();
     }
-
-    document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
-    renderApp();
-};
+}
 
 function saveToStorage() {
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
@@ -39,7 +38,6 @@ function updateSubCategoryOptions(selectedSub = '') {
     const sumber = document.getElementById('inputSumber').value;
     const kategoriSelect = document.getElementById('inputKategori');
     
-    // Bersihkan opsi lama
     kategoriSelect.innerHTML = '<option value="">-- Pilih Kategori --</option>';
 
     if (sumber && SUB_CATEGORIES[sumber]) {
@@ -51,7 +49,6 @@ function updateSubCategoryOptions(selectedSub = '') {
             kategoriSelect.appendChild(option);
         });
 
-        // Otomatis pilih opsi pertama jika tidak ada yang dipilih
         if (!selectedSub && SUB_CATEGORIES[sumber].length > 0) {
             kategoriSelect.value = SUB_CATEGORIES[sumber][0];
         }
@@ -89,7 +86,6 @@ function handleFormSubmit(e) {
     const sumberValue = document.getElementById('inputSumber').value;
     let kategoriValue = document.getElementById('inputKategori').value;
 
-    // Validasi Keamanan: Jika kategori kosong, ambil otomatis dari data
     if (!kategoriValue && SUB_CATEGORIES[sumberValue]) {
         kategoriValue = SUB_CATEGORIES[sumberValue][0];
     }
@@ -125,7 +121,8 @@ function resetForm() {
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report';
     document.getElementById('btnCancelEdit').classList.add('hidden');
     document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
-    updateSubCategoryOptions(); // Ini yang tadi error, sekarang sudah aman
+    document.getElementById('inputStatus').value = 'Pending';
+    updateSubCategoryOptions();
 }
 
 function editRecord(id) {
@@ -195,6 +192,14 @@ function closeModal() {
     document.getElementById('detailModal').classList.add('hidden');
 }
 
+function clearFilter() {
+    document.getElementById('filterSearch').value = '';
+    document.getElementById('filterMonth').value = '';
+    document.getElementById('filterSumber').value = 'All';
+    document.getElementById('filterStatus').value = 'All';
+    renderApp();
+}
+
 // FILTER & RENDER DATA
 function getFilteredIncidents() {
     const search = document.getElementById('filterSearch').value.toLowerCase();
@@ -207,7 +212,11 @@ function getFilteredIncidents() {
                             item.idPelanggan.toLowerCase().includes(search) || 
                             item.kategori.toLowerCase().includes(search) ||
                             item.keterangan.toLowerCase().includes(search);
-        const matchMonth = !month || item.tanggal.startsWith(month);
+        
+        // Aturan: Ticket "Pending" (belum closed) selalu ditampilkan kecuali sengaja difilter "Resolved" oleh user
+        const isPending = item.status === 'Pending';
+        const matchMonth = !month || (item.tanggal && item.tanggal.startsWith(month)) || isPending;
+        
         const matchSumber = sumber === 'All' || item.sumber === sumber;
         const matchStatus = status === 'All' || item.status === status;
 
@@ -228,7 +237,9 @@ function renderApp() {
     document.getElementById('statMetro').innerText = incidents.filter(i => i.sumber === 'Metro').length;
     document.getElementById('statMikrotik').innerText = incidents.filter(i => i.sumber === 'Mikrotik').length;
 
-    const totalDowntimeMinutes = incidents.reduce((acc, curr) => acc + (curr.downtime || 0), 0);
+    const currentMonthStr = todayStr.substring(0, 7);
+    const thisMonthIncidents = incidents.filter(i => i.tanggal && i.tanggal.startsWith(currentMonthStr));
+    const totalDowntimeMinutes = thisMonthIncidents.reduce((acc, curr) => acc + (curr.downtime || 0), 0);
     document.getElementById('statDowntime').innerText = `${totalDowntimeMinutes} Menit`;
     document.getElementById('statDowntimeHours').innerText = `~${(totalDowntimeMinutes/60).toFixed(1)} Jam Accumulated`;
 
@@ -247,7 +258,8 @@ function renderApp() {
     } else {
         pageData.forEach(item => {
             const tr = document.createElement('tr');
-            tr.className = 'hover:bg-slate-800/80 transition border-b border-slate-700/50 fade-in';
+            const isPending = item.status === 'Pending';
+            tr.className = `hover:bg-slate-800/80 transition border-b border-slate-700/50 fade-in ${isPending ? 'bg-amber-500/5' : ''}`;
             tr.innerHTML = `
                 <td class="p-3 whitespace-nowrap text-slate-300 font-mono">${item.tanggal}</td>
                 <td class="p-3">
@@ -263,8 +275,8 @@ function renderApp() {
                 <td class="p-3 text-slate-400 font-mono">${item.jamMulai} - ${item.jamSelesai || 'Active'}</td>
                 <td class="p-3 font-semibold text-cyan-400">${item.downtime ? item.downtime + 'm' : '-'}</td>
                 <td class="p-3">
-                    <span class="px-2 py-0.5 text-[11px] font-medium rounded ${item.status === 'Resolved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">
-                        ${item.status}
+                    <span class="px-2 py-0.5 text-[11px] font-medium rounded ${item.status === 'Resolved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'}">
+                        ${item.status === 'Pending' ? 'OPEN / Pending' : 'Resolved'}
                     </span>
                 </td>
                 <td class="p-3 text-center">
@@ -294,10 +306,9 @@ function changePage(delta) {
 
 // CHART.JS RENDER
 function renderCharts() {
-    // Top Mitra Chart
     const mitraCountMap = {};
     incidents.forEach(i => {
-        mitraCountMap[i.mitra] = (mitraCountMap[i.mitra] || 0) + 1;
+        if (i.mitra) mitraCountMap[i.mitra] = (mitraCountMap[i.mitra] || 0) + 1;
     });
     const sortedMitra = Object.entries(mitraCountMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
@@ -326,7 +337,6 @@ function renderCharts() {
         }
     });
 
-    // Ratio Doughnut Chart
     const metroCount = incidents.filter(i => i.sumber === 'Metro').length;
     const mikrotikCount = incidents.filter(i => i.sumber === 'Mikrotik').length;
 
@@ -349,10 +359,9 @@ function renderCharts() {
         }
     });
 
-    // Daily Trend Chart
     const trendMap = {};
     incidents.forEach(i => {
-        trendMap[i.tanggal] = (trendMap[i.tanggal] || 0) + 1;
+        if (i.tanggal) trendMap[i.tanggal] = (trendMap[i.tanggal] || 0) + 1;
     });
     const sortedDates = Object.keys(trendMap).sort().slice(-10);
 
@@ -383,15 +392,58 @@ function renderCharts() {
     });
 }
 
-// EXPORT TO EXCEL (.XLSX)
-function exportToExcel() {
-    const filteredData = getFilteredIncidents();
-    if (filteredData.length === 0) {
+// EXPORT TO EXCEL MODAL & LOGIC
+function openExportModal() {
+    if (incidents.length === 0) {
         alert('Tidak ada data laporan untuk di-export.');
         return;
     }
 
-    const excelRows = filteredData.map((item, index) => ({
+    const selectMonth = document.getElementById('exportMonthSelect');
+    selectMonth.innerHTML = '<option value="ALL">Semua Bulan (All Time)</option>';
+
+    // Kumpulkan seluruh pilihan bulan dari data tanggal yang ada
+    const monthsSet = new Set();
+    incidents.forEach(item => {
+        if (item.tanggal && item.tanggal.length >= 7) {
+            monthsSet.add(item.tanggal.substring(0, 7));
+        }
+    });
+
+    Array.from(monthsSet).sort().reverse().forEach(m => {
+        const option = document.createElement('option');
+        option.value = m;
+        option.textContent = `Bulan ${m}`;
+        selectMonth.appendChild(option);
+    });
+
+    document.getElementById('exportModal').classList.remove('hidden');
+}
+
+function closeExportModal() {
+    document.getElementById('exportModal').classList.add('hidden');
+}
+
+function confirmExportToExcel() {
+    const selectedMonth = document.getElementById('exportMonthSelect').value;
+    const selectedStatus = document.getElementById('exportStatusSelect').value;
+
+    let exportData = incidents;
+
+    if (selectedMonth !== 'ALL') {
+        exportData = exportData.filter(i => i.tanggal && i.tanggal.startsWith(selectedMonth));
+    }
+
+    if (selectedStatus !== 'ALL') {
+        exportData = exportData.filter(i => i.status === selectedStatus);
+    }
+
+    if (exportData.length === 0) {
+        alert('Tidak ada data yang sesuai dengan kriteria filter bulan / status tersebut.');
+        return;
+    }
+
+    const excelRows = exportData.map((item, index) => ({
         'No': index + 1,
         'Tanggal': item.tanggal,
         'Nama Mitra': item.mitra,
@@ -413,6 +465,46 @@ function exportToExcel() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Gangguan Mitra");
 
-    const dateStr = new Date().toISOString().split('T')[0];
+    const dateStr = selectedMonth === 'ALL' ? 'All_Time' : selectedMonth;
     XLSX.writeFile(workbook, `Report_Gangguan_ISP_Mitra_${dateStr}.xlsx`);
+
+    closeExportModal();
+}
+
+// BACKUP DATA TO JSON FILE
+function backupJSON() {
+    if (incidents.length === 0) {
+        alert('Tidak ada data untuk dibackup.');
+        return;
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(incidents, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `backup_isp_incidents_${CONFIG.DEFAULT_DATE}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+}
+
+// RESTORE DATA FROM JSON FILE
+function restoreJSON(e) {
+    const fileReader = new FileReader();
+    fileReader.onload = function(event) {
+        try {
+            const parsedData = JSON.parse(event.target.result);
+            if (Array.isArray(parsedData)) {
+                incidents = parsedData;
+                saveToStorage();
+                renderApp();
+                alert('Data berhasil di-restore!');
+            } else {
+                alert('Format file JSON tidak valid.');
+            }
+        } catch (err) {
+            alert('Gagal membaca file JSON.');
+        }
+    };
+    if (e.target.files[0]) {
+        fileReader.readAsText(e.target.files[0]);
+    }
 }
