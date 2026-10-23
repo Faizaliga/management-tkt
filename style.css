@@ -1,13 +1,15 @@
-/* Custom Styles & Overrides for NOC Theme */
+/* ==========================================
+   Custom Styles & Overrides for NOC Theme
+   ========================================== */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 body {
     font-family: 'Inter', sans-serif;
-    background-color: #0f172a;
-    color: #f8fafc;
+    background-color: #0f172a; /* slate-900 */
+    color: #f8fafc; /* slate-50 */
 }
 
-/* Custom Scrollbar */
+/* --- CUSTOM SCROLLBAR --- */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -26,14 +28,14 @@ body {
     background: #475569;
 }
 
-/* Form input focus styles */
+/* --- FORM INPUT FOCUS STYLES --- */
 input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: #3b82f6 !important;
+    border-color: #3b82f6 !important; /* blue-500 */
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
-/* Custom Animations */
+/* --- CUSTOM ANIMATIONS --- */
 .fade-in {
     animation: fadeIn 0.3s ease-in-out;
 }
@@ -41,4 +43,43 @@ input:focus, select:focus, textarea:focus {
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================
+   PERBAIKAN TAMPILAN INPUT DATE & MONTH (DARK MODE)
+   ========================================== */
+
+/* 1. Memaksa browser menggunakan skema warna gelap untuk ikon kalender */
+input[type="date"],
+input[type="time"],
+input[type="month"] {
+    color-scheme: dark; 
+}
+
+/* 2. Memperbaiki warna teks placeholder saat input kosong */
+input[type="date"]:invalid,
+input[type="time"]:invalid,
+input[type="month"]:invalid {
+    color: #64748b; /* Warna abu-abu (slate-500) */
+}
+
+/* 3. Membuat ikon kalender di ujung kanan input menjadi putih terang */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator {
+    filter: invert(1); /* Membalik warna hitam jadi putih */
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="month"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1; /* Ikon jadi terang saat di-hover */
+}
+
+/* 4. Memperbaiki tampilan input month agar tidak terlihat seperti garis putus-putus */
+input[type="month"] {
+    color: #e2e8f0; /* Warna teks terang (slate-200) */
 }
