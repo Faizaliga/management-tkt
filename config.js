@@ -1,7 +1,7 @@
 // Configuration & Constant Data for ISP Daily Report
 const CONFIG = {
     APP_NAME: "ISP Network Operations Center",
-    STORAGE_KEY: "isp_incidents_data_v2",
+    STORAGE_KEY: "isp_incidents_data_v3",
     ITEMS_PER_PAGE: 6,
     DEFAULT_DATE: new Date().toISOString().split('T')[0]
 };
@@ -25,6 +25,5 @@ const SUB_CATEGORIES = {
     ]
 };
 
-// Initial Mock Data
-const INITIAL_SAMPLE_DATA = [
-];
+// Sample Data Awal (Jika LocalStorage kosong)
+const INITIAL_SAMPLE_DATA = [];
