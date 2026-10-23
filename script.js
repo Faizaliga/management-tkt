@@ -8,29 +8,42 @@ let sourceRatioChartInstance = null;
 let dailyTrendChartInstance = null;
 
 // INIT APP
-window.onload = function() {
-    loadFromStorage();
+window.onload = async function() {
+    await loadFromSupabase();
     document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
+    document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
     renderApp();
 };
 
-function loadFromStorage() {
-    const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
-    if (stored) {
-        try {
-            incidents = JSON.parse(stored);
-            if (!Array.isArray(incidents)) incidents = [];
-        } catch (e) {
-            incidents = [];
-        }
-    } else {
-        incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
-        saveToStorage();
-    }
-}
+// AMBIL DATA REAL-TIME DARI DATABASE SUPABASE
+async function loadFromSupabase() {
+    try {
+        const { data, error } = await db
+            .from('tickets')
+            .select('*')
+            .order('id', { ascending: false });
 
-function saveToStorage() {
-    localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
+        if (error) throw error;
+        
+        // Map kolom dari Supabase Postgres ke format variabel frontend
+        incidents = (data || []).map(item => ({
+            id: item.id,
+            tanggal: item.tanggal_kejadian,
+            tanggalSelesai: item.tanggal_solved,
+            mitra: item.nama_mitra,
+            idPelanggan: item.id_pelanggan,
+            sumber: item.sumber_masalah,
+            kategori: item.detail_kategori,
+            jamMulai: item.jam_kejadian,
+            jamSelesai: item.jam_solved,
+            downtimeText: item.downtime_formatted,
+            keterangan: item.keterangan,
+            status: item.status_ticket
+        }));
+    } catch (err) {
+        console.error("Gagal terhubung ke Supabase:", err.message);
+        incidents = [];
+    }
 }
 
 // DYNAMIC CATEGORIES BASED ON SOURCE
@@ -55,62 +68,104 @@ function updateSubCategoryOptions(selectedSub = '') {
     }
 }
 
-// DOWNTIME CALCULATOR IN MINUTES
+// DOWNTIME CALCULATOR (FORMAT: X Hari Y Jam Z Menit)
 function calculateDowntime() {
-    const start = document.getElementById('inputJamMulai').value;
-    const end = document.getElementById('inputJamSelesai').value;
+    const tglMulai = document.getElementById('inputTanggal').value;
+    const jamMulai = document.getElementById('inputJamMulai').value;
+    const tglSelesai = document.getElementById('inputTanggalSelesai').value;
+    const jamSelesai = document.getElementById('inputJamSelesai').value;
     const downtimeInput = document.getElementById('inputDowntime');
 
-    if (start && end) {
-        const [h1, m1] = start.split(':').map(Number);
-        const [h2, m2] = end.split(':').map(Number);
-        
-        let t1 = h1 * 60 + m1;
-        let t2 = h2 * 60 + m2;
-        
-        if (t2 < t1) {
-            t2 += 24 * 60; // Cross midnight
+    if (tglMulai && jamMulai && tglSelesai && jamSelesai) {
+        const startDateTime = new Date(`${tglMulai}T${jamMulai}:00`);
+        const endDateTime = new Date(`${tglSelesai}T${jamSelesai}:00`);
+
+        if (endDateTime < startDateTime) {
+            downtimeInput.value = "Waktu tidak valid!";
+            return;
         }
+
+        const diffMs = endDateTime - startDateTime;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        let hasil = [];
+        if (diffDays > 0) hasil.push(`${diffDays} Hari`);
+        if (diffHours > 0) hasil.push(`${diffHours} Jam`);
+        if (diffMinutes > 0) hasil.push(`${diffMinutes} Menit`);
         
-        downtimeInput.value = t2 - t1;
+        if (hasil.length === 0) {
+            downtimeInput.value = "0 Menit";
+        } else {
+            downtimeInput.value = hasil.join(" ");
+        }
     } else {
         downtimeInput.value = '';
     }
 }
 
-// FORM SUBMISSION
-function handleFormSubmit(e) {
+// FORM SUBMISSION (CREATE & UPDATE DI SUPABASE)
+async function handleFormSubmit(e) {
     e.preventDefault();
 
     const editIndex = parseInt(document.getElementById('editIndex').value);
     const sumberValue = document.getElementById('inputSumber').value;
     let kategoriValue = document.getElementById('inputKategori').value;
+    const statusValue = document.getElementById('inputStatus').value;
+    const jamSelesaiValue = document.getElementById('inputJamSelesai').value;
+    const tanggalSelesaiValue = document.getElementById('inputTanggalSelesai').value;
+
+    if (statusValue === 'Resolved' && (!jamSelesaiValue || !tanggalSelesaiValue)) {
+        alert("Untuk menutup tiket (Resolved), Tanggal Selesai dan Jam Solved wajib diisi!");
+        return;
+    }
 
     if (!kategoriValue && SUB_CATEGORIES[sumberValue]) {
         kategoriValue = SUB_CATEGORIES[sumberValue][0];
     }
 
-    const newItem = {
-        id: editIndex >= 0 ? incidents[editIndex].id : Date.now(),
-        tanggal: document.getElementById('inputTanggal').value,
-        mitra: document.getElementById('inputMitra').value.trim(),
-        idPelanggan: document.getElementById('inputIdPelanggan').value.trim(),
-        sumber: sumberValue,
-        kategori: kategoriValue,
-        jamMulai: document.getElementById('inputJamMulai').value,
-        jamSelesai: document.getElementById('inputJamSelesai').value,
-        downtime: parseInt(document.getElementById('inputDowntime').value) || 0,
+    const downtimeText = document.getElementById('inputDowntime').value;
+
+    const payload = {
+        tanggal_kejadian: document.getElementById('inputTanggal').value,
+        tanggal_solved: tanggalSelesaiValue || null,
+        nama_mitra: document.getElementById('inputMitra').value.trim(),
+        id_pelanggan: document.getElementById('inputIdPelanggan').value.trim(),
+        sumber_masalah: sumberValue,
+        detail_kategori: kategoriValue,
+        jam_kejadian: document.getElementById('inputJamMulai').value,
+        jam_solved: jamSelesaiValue || null,
+        downtime_formatted: downtimeText,
         keterangan: document.getElementById('inputKeterangan').value.trim(),
-        status: document.getElementById('inputStatus').value
+        status_ticket: statusValue
     };
 
     if (editIndex >= 0) {
-        incidents[editIndex] = newItem;
+        // Mode Update Ke Database
+        const targetId = incidents[editIndex].id;
+        const { error } = await db
+            .from('tickets')
+            .update(payload)
+            .eq('id', targetId);
+
+        if (error) {
+            alert("Gagal mengupdate data: " + error.message);
+            return;
+        }
     } else {
-        incidents.unshift(newItem);
+        // Mode Insert Ke Database
+        const { error } = await db
+            .from('tickets')
+            .insert([payload]);
+
+        if (error) {
+            alert("Gagal menyimpan data: " + error.message);
+            return;
+        }
     }
 
-    saveToStorage();
+    await loadFromSupabase();
     resetForm();
     renderApp();
 }
@@ -120,8 +175,12 @@ function resetForm() {
     document.getElementById('editIndex').value = -1;
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report';
     document.getElementById('btnCancelEdit').classList.add('hidden');
+    
     document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
+    document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
     document.getElementById('inputStatus').value = 'Pending';
+    document.getElementById('inputDowntime').value = '';
+    
     updateSubCategoryOptions();
 }
 
@@ -132,6 +191,8 @@ function editRecord(id) {
     const item = incidents[index];
     document.getElementById('editIndex').value = index;
     document.getElementById('inputTanggal').value = item.tanggal;
+    document.getElementById('inputTanggalSelesai').value = item.tanggalSelesai || item.tanggal;
+    
     document.getElementById('inputMitra').value = item.mitra;
     document.getElementById('inputIdPelanggan').value = item.idPelanggan;
     document.getElementById('inputSumber').value = item.sumber;
@@ -139,9 +200,9 @@ function editRecord(id) {
     updateSubCategoryOptions(item.kategori);
     
     document.getElementById('inputJamMulai').value = item.jamMulai;
-    document.getElementById('inputJamSelesai').value = item.jamSelesai;
-    document.getElementById('inputDowntime').value = item.downtime;
-    document.getElementById('inputKeterangan').value = item.keterangan;
+    document.getElementById('inputJamSelesai').value = item.jamSelesai || '';
+    document.getElementById('inputDowntime').value = item.downtimeText || '';
+    document.getElementById('inputKeterangan').value = item.keterangan || '';
     document.getElementById('inputStatus').value = item.status;
 
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i> Update Report';
@@ -150,10 +211,19 @@ function editRecord(id) {
     window.scrollTo({ top: document.getElementById('incidentForm').offsetTop - 80, behavior: 'smooth' });
 }
 
-function deleteRecord(id) {
-    if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini?')) {
-        incidents = incidents.filter(item => item.id !== id);
-        saveToStorage();
+async function deleteRecord(id) {
+    if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini dari database cloud?')) {
+        const { error } = await db
+            .from('tickets')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            alert("Gagal menghapus data: " + error.message);
+            return;
+        }
+
+        await loadFromSupabase();
         renderApp();
     }
 }
@@ -169,12 +239,12 @@ function showDetail(id) {
             <div><span class="text-xs text-slate-400 block">ID Pelanggan</span> <code>${item.idPelanggan}</code></div>
         </div>
         <div class="grid grid-cols-2 gap-2 border-b border-slate-700 pb-3">
-            <div><span class="text-xs text-slate-400 block">Tanggal Kejadian</span> ${item.tanggal}</div>
-            <div><span class="text-xs text-slate-400 block">Status</span> <span class="px-2 py-0.5 text-xs rounded ${item.status==='Resolved'?'bg-emerald-500/20 text-emerald-400':'bg-amber-500/20 text-amber-400'}">${item.status}</span></div>
+            <div><span class="text-xs text-slate-400 block">Tanggal Kejadian</span> ${item.tanggal} (${item.jamMulai})</div>
+            <div><span class="text-xs text-slate-400 block">Tanggal Selesai</span> ${item.tanggalSelesai || '-'} (${item.jamSelesai || '-'})</div>
         </div>
         <div class="grid grid-cols-2 gap-2 border-b border-slate-700 pb-3">
             <div><span class="text-xs text-slate-400 block">Sumber Gangguan</span> <span class="font-semibold ${item.sumber==='Metro'?'text-red-400':'text-amber-400'}">${item.sumber}</span></div>
-            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> ${item.downtime} Menit</div>
+            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> <span class="font-bold text-emerald-400">${item.downtimeText || '-'}</span></div>
         </div>
         <div>
             <span class="text-xs text-slate-400 block mb-1">Specific Category</span>
@@ -200,7 +270,6 @@ function clearFilter() {
     renderApp();
 }
 
-// FILTER & RENDER DATA
 function getFilteredIncidents() {
     const search = document.getElementById('filterSearch').value.toLowerCase();
     const month = document.getElementById('filterMonth').value;
@@ -208,12 +277,11 @@ function getFilteredIncidents() {
     const status = document.getElementById('filterStatus').value;
 
     return incidents.filter(item => {
-        const matchSearch = item.mitra.toLowerCase().includes(search) || 
-                            item.idPelanggan.toLowerCase().includes(search) || 
-                            item.kategori.toLowerCase().includes(search) ||
-                            item.keterangan.toLowerCase().includes(search);
+        const matchSearch = (item.mitra || '').toLowerCase().includes(search) || 
+                            (item.idPelanggan || '').toLowerCase().includes(search) || 
+                            (item.kategori || '').toLowerCase().includes(search) ||
+                            (item.keterangan || '').toLowerCase().includes(search);
         
-        // Aturan: Ticket "Pending" (belum closed) selalu ditampilkan kecuali sengaja difilter "Resolved" oleh user
         const isPending = item.status === 'Pending';
         const matchMonth = !month || (item.tanggal && item.tanggal.startsWith(month)) || isPending;
         
@@ -227,7 +295,6 @@ function getFilteredIncidents() {
 function renderApp() {
     const filtered = getFilteredIncidents();
 
-    // Stats Card Update
     const todayStr = CONFIG.DEFAULT_DATE;
     const todayIncidents = incidents.filter(i => i.tanggal === todayStr);
     document.getElementById('statToday').innerText = todayIncidents.length;
@@ -237,13 +304,19 @@ function renderApp() {
     document.getElementById('statMetro').innerText = incidents.filter(i => i.sumber === 'Metro').length;
     document.getElementById('statMikrotik').innerText = incidents.filter(i => i.sumber === 'Mikrotik').length;
 
-    const currentMonthStr = todayStr.substring(0, 7);
-    const thisMonthIncidents = incidents.filter(i => i.tanggal && i.tanggal.startsWith(currentMonthStr));
-    const totalDowntimeMinutes = thisMonthIncidents.reduce((acc, curr) => acc + (curr.downtime || 0), 0);
+    let totalDowntimeMinutes = 0;
+    incidents.forEach(item => {
+        if (item.downtimeText) {
+            const days = parseInt(item.downtimeText.match(/(\d+)\s*Hari/) || [0]);
+            const hours = parseInt(item.downtimeText.match(/(\d+)\s*Jam/) || [0]);
+            const mins = parseInt(item.downtimeText.match(/(\d+)\s*Menit/) || [0]);
+            totalDowntimeMinutes += (days * 24 * 60) + (hours * 60) + mins;
+        }
+    });
+
     document.getElementById('statDowntime').innerText = `${totalDowntimeMinutes} Menit`;
     document.getElementById('statDowntimeHours').innerText = `~${(totalDowntimeMinutes/60).toFixed(1)} Jam Accumulated`;
 
-    // Table Pagination Render
     const totalPages = Math.ceil(filtered.length / CONFIG.ITEMS_PER_PAGE) || 1;
     if (currentPage > totalPages) currentPage = totalPages;
 
@@ -260,8 +333,19 @@ function renderApp() {
             const tr = document.createElement('tr');
             const isPending = item.status === 'Pending';
             tr.className = `hover:bg-slate-800/80 transition border-b border-slate-700/50 fade-in ${isPending ? 'bg-amber-500/5' : ''}`;
+            
+            const tglMulai = item.tanggal || '-';
+            const jamMulai = item.jamMulai || '--:--';
+            const tglSelesai = item.tanggalSelesai || '-';
+            const jamSelesai = item.jamSelesai || '--:--';
+
+            const isSameDay = tglMulai === tglSelesai;
+            const timeDisplay = isSameDay 
+                ? `${tglMulai} <br> <span class="text-[10px]">${jamMulai} - ${jamSelesai}</span>`
+                : `${tglMulai} ${jamMulai} <br> <span class="text-[10px] text-amber-400">s/d ${tglSelesai} ${jamSelesai}</span>`;
+
             tr.innerHTML = `
-                <td class="p-3 whitespace-nowrap text-slate-300 font-mono">${item.tanggal}</td>
+                <td class="p-3 whitespace-nowrap text-slate-300 font-mono text-xs">${timeDisplay}</td>
                 <td class="p-3">
                     <div class="font-bold text-slate-200">${item.mitra}</div>
                     <div class="text-[10px] text-slate-400 font-mono">${item.idPelanggan}</div>
@@ -272,8 +356,8 @@ function renderApp() {
                     </span>
                 </td>
                 <td class="p-3 text-slate-300 max-w-xs truncate" title="${item.kategori}">${item.kategori}</td>
-                <td class="p-3 text-slate-400 font-mono">${item.jamMulai} - ${item.jamSelesai || 'Active'}</td>
-                <td class="p-3 font-semibold text-cyan-400">${item.downtime ? item.downtime + 'm' : '-'}</td>
+                <td class="p-3 font-mono text-slate-300">${jamMulai} - ${jamSelesai}</td>
+                <td class="p-3 font-semibold text-cyan-400">${item.downtimeText || '-'}</td>
                 <td class="p-3">
                     <span class="px-2 py-0.5 text-[11px] font-medium rounded ${item.status === 'Resolved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'}">
                         ${item.status === 'Pending' ? 'OPEN / Pending' : 'Resolved'}
@@ -304,7 +388,6 @@ function changePage(delta) {
     renderApp();
 }
 
-// CHART.JS RENDER
 function renderCharts() {
     const mitraCountMap = {};
     incidents.forEach(i => {
@@ -392,7 +475,6 @@ function renderCharts() {
     });
 }
 
-// EXPORT TO EXCEL MODAL & LOGIC
 function openExportModal() {
     if (incidents.length === 0) {
         alert('Tidak ada data laporan untuk di-export.');
@@ -402,7 +484,6 @@ function openExportModal() {
     const selectMonth = document.getElementById('exportMonthSelect');
     selectMonth.innerHTML = '<option value="ALL">Semua Bulan (All Time)</option>';
 
-    // Kumpulkan seluruh pilihan bulan dari data tanggal yang ada
     const monthsSet = new Set();
     incidents.forEach(item => {
         if (item.tanggal && item.tanggal.length >= 7) {
@@ -431,7 +512,7 @@ function confirmExportToExcel() {
     let exportData = incidents;
 
     if (selectedMonth !== 'ALL') {
-        exportData = exportData.filter(i => i.tanggal && i.tanggal.startsWith(selectedMonth));
+        exportData = exportData.filter(i => (i.tanggal && i.tanggal.startsWith(selectedMonth)) || i.status === 'Pending');
     }
 
     if (selectedStatus !== 'ALL') {
@@ -445,14 +526,15 @@ function confirmExportToExcel() {
 
     const excelRows = exportData.map((item, index) => ({
         'No': index + 1,
-        'Tanggal': item.tanggal,
+        'Tgl Kejadian': item.tanggal,
+        'Jam Start': item.jamMulai,
+        'Tgl Selesai': item.tanggalSelesai || '-',
+        'Jam End': item.jamSelesai || 'Ongoing',
         'Nama Mitra': item.mitra,
         'ID Pelanggan / IP': item.idPelanggan,
         'Sumber Masalah': item.sumber,
         'Kategori Issue': item.kategori,
-        'Jam Start': item.jamMulai,
-        'Jam End': item.jamSelesai || 'Ongoing',
-        'Downtime (Menit)': item.downtime,
+        'Durasi Downtime': item.downtimeText || '-',
         'Catatan / Root Cause': item.keterangan,
         'Status Ticket': item.status
     }));
@@ -471,7 +553,6 @@ function confirmExportToExcel() {
     closeExportModal();
 }
 
-// BACKUP DATA TO JSON FILE
 function backupJSON() {
     if (incidents.length === 0) {
         alert('Tidak ada data untuk dibackup.');
@@ -486,7 +567,6 @@ function backupJSON() {
     downloadAnchor.remove();
 }
 
-// RESTORE DATA FROM JSON FILE
 function restoreJSON(e) {
     const fileReader = new FileReader();
     fileReader.onload = function(event) {
@@ -494,9 +574,8 @@ function restoreJSON(e) {
             const parsedData = JSON.parse(event.target.result);
             if (Array.isArray(parsedData)) {
                 incidents = parsedData;
-                saveToStorage();
                 renderApp();
-                alert('Data berhasil di-restore!');
+                alert('Data berhasil dibaca dari file JSON!');
             } else {
                 alert('Format file JSON tidak valid.');
             }
