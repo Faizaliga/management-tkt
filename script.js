@@ -4,7 +4,6 @@
 let incidents = [];
 let currentPage = 1;
 
-// Chart Instances
 let topMitraChartInstance = null;
 let sourceRatioChartInstance = null;
 let dailyTrendChartInstance = null;
@@ -13,58 +12,26 @@ let dailyTrendChartInstance = null;
 // SISTEM AKUN & LOGIN (3 USERS)
 // ==========================================
 const USERS = [
-    {
-        username: "admin",
-        password: "Iga@1996",
-        name: "Faizal Iga Pratama",
-        role: "Super Admin",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256"
-    },
-    {
-        username: "noc",
-        password: "nocpassword",
-        name: "Noc Baik",
-        role: "NOC Engineer (L2)",
-        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=256"
-    },
-    {
-        username: "helpdesk",
-        password: "helpdeskpassword",
-        name: "Helpdesk Gokil",
-        role: "Helpdesk Staff (L1)",
-        avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=256"
-    }
+    { username: "admin", password: "Iga@1996", name: "Faizal Iga Pratama", role: "Super Admin", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256" },
+    { username: "noc", password: "nocpassword", name: "Noc Baik", role: "NOC Engineer (L2)", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=256" },
+    { username: "helpdesk", password: "helpdeskpassword", name: "Helpdesk Gokil", role: "Helpdesk Staff (L1)", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=256" }
 ];
 
 let currentUser = null;
 
-// INIT APP ON LOAD
 window.onload = async function() {
     const savedUser = localStorage.getItem('isp_current_user');
     if (savedUser) {
-        try {
-            currentUser = JSON.parse(savedUser);
-        } catch (e) {
-            currentUser = null;
-        }
+        try { currentUser = JSON.parse(savedUser); } catch (e) { currentUser = null; }
     }
-
-    if (currentUser) {
-        await showApp();
-    } else {
-        showLogin();
-    }
+    if (currentUser) { await showApp(); } else { showLogin(); }
 };
 
-// ==========================================
-// FUNGSIONALITAS AUTH & TOGGLE SIDEBAR
-// ==========================================
 function handleLogin(e) {
     e.preventDefault();
     const userInput = document.getElementById('loginUsername').value.trim();
     const passInput = document.getElementById('loginPassword').value.trim();
     const errorEl = document.getElementById('loginError');
-
     const found = USERS.find(u => u.username === userInput && u.password === passInput);
 
     if (found) {
@@ -84,19 +51,15 @@ function handleLogout() {
 }
 
 function showLogin() {
-    const loginScreen = document.getElementById('loginScreen');
-    const appScreen = document.getElementById('appScreen');
-    if (loginScreen) loginScreen.classList.remove('hidden');
-    if (appScreen) appScreen.classList.add('hidden');
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('appScreen').classList.add('hidden');
 }
 
 async function showApp() {
-    const loginScreen = document.getElementById('loginScreen');
-    const appScreen = document.getElementById('appScreen');
-    if (loginScreen) loginScreen.classList.add('hidden');
-    if (appScreen) appScreen.classList.remove('hidden');
+        await loadOperators(); 
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appScreen').classList.remove('hidden');
 
-    // Tampilkan loading state
     const tbody = document.getElementById('incidentTableBody');
     if(tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat data dari server...</td></tr>`;
 
@@ -111,29 +74,21 @@ async function showApp() {
 
 function updateUserUI() {
     if (!currentUser) return;
-    if (document.getElementById('navUserName')) document.getElementById('navUserName').innerText = currentUser.name;
-    if (document.getElementById('navUserRole')) document.getElementById('navUserRole').innerText = currentUser.role;
-    if (document.getElementById('navUserAvatar')) document.getElementById('navUserAvatar').src = currentUser.avatar;
+    document.getElementById('navUserName').innerText = currentUser.name;
+    document.getElementById('navUserRole').innerText = currentUser.role;
+    document.getElementById('navUserAvatar').src = currentUser.avatar;
 
     const isSuperAdmin = currentUser.role === 'Super Admin';
-    const btnBackup = document.getElementById('btnHeaderBackup');
-    const btnRestore = document.getElementById('btnHeaderRestore');
-
-    if (btnBackup) btnBackup.style.display = isSuperAdmin ? 'flex' : 'none';
-    if (btnRestore) btnRestore.style.display = isSuperAdmin ? 'flex' : 'none';
+    document.getElementById('btnHeaderBackup').style.display = isSuperAdmin ? 'flex' : 'none';
+    document.getElementById('btnHeaderRestore').style.display = isSuperAdmin ? 'flex' : 'none';
 }
 
 function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) sidebar.classList.toggle('-translate-x-full');
+    document.getElementById('sidebar').classList.toggle('-translate-x-full');
 }
 
-// ==========================================
-// STORAGE (SUPABASE & LOCAL)
-// ==========================================
 async function loadFromStorage() {
     try {
-        // Ambil dari Supabase
         const { data, error } = await supabaseClient
             .from('tickets')
             .select('*')
@@ -142,7 +97,6 @@ async function loadFromStorage() {
 
         if (error) throw error;
 
-        // Mapping dari format Supabase ke format JS App
         incidents = data.map(item => ({
             id: item.id,
             tanggal: item.tanggal_kejadian,
@@ -157,22 +111,17 @@ async function loadFromStorage() {
             downtimeText: item.downtime_formatted,
             keterangan: item.keterangan,
             status: item.status_ticket,
-            createdBy: 'System' // Sesuaikan jika ada kolom created_by
+            createdBy: item.created_by || 'System' // Mapping operator
         }));
-
-        // Simpan cache ke local storage
         localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
     } catch (err) {
         console.error('Gagal load dari Supabase:', err.message);
-        // Fallback ke LocalStorage jika Supabase error
         const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
         if (stored) {
             try {
                 incidents = JSON.parse(stored);
                 if (!Array.isArray(incidents)) incidents = [];
-            } catch (e) {
-                incidents = [];
-            }
+            } catch (e) { incidents = []; }
         } else {
             incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
         }
@@ -180,33 +129,24 @@ async function loadFromStorage() {
 }
 
 async function saveToStorage(action, payload) {
-    // Simpan ke local storage sebagai backup cache
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
-
     try {
         if (action === 'INSERT' || action === 'UPDATE') {
-            const { data, error } = await supabaseClient
-                .from('tickets')
-                .upsert([payload], { onConflict: 'id' });
+            const { error } = await supabaseClient.from('tickets').upsert([payload], { onConflict: 'id' });
             if (error) throw error;
         } else if (action === 'DELETE') {
-            const { error } = await supabaseClient
-                .from('tickets')
-                .delete()
-                .eq('id', payload);
+            const { error } = await supabaseClient.from('tickets').delete().eq('id', payload);
             if (error) throw error;
         }
     } catch (err) {
         console.error('Gagal sinkronisasi ke Supabase:', err.message);
-        alert('Peringatan: Data tersimpan secara lokal, tapi gagal sinkron ke server. Error: ' + err.message);
+        alert('Peringatan: Gagal sinkron ke server. Error: ' + err.message);
     }
 }
 
-// DYNAMIC CATEGORIES BASED ON SOURCE
 function updateSubCategoryOptions(selectedSub = '') {
     const sumberSelect = document.getElementById('inputSumber');
     const kategoriSelect = document.getElementById('inputKategori');
-    
     if (!sumberSelect || !kategoriSelect) return;
     
     const sumber = sumberSelect.value;
@@ -220,28 +160,20 @@ function updateSubCategoryOptions(selectedSub = '') {
             if (kat === selectedSub) option.selected = true;
             kategoriSelect.appendChild(option);
         });
-
-        if (!selectedSub && SUB_CATEGORIES[sumber].length > 0) {
-            kategoriSelect.value = SUB_CATEGORIES[sumber][0];
-        }
+        if (!selectedSub && SUB_CATEGORIES[sumber].length > 0) kategoriSelect.value = SUB_CATEGORIES[sumber][0];
     }
 }
 
-// HANDLE STATUS CHANGE (AUTO FILL DATE/TIME IF RESOLVED)
 function handleStatusChange() {
     const status = document.getElementById('inputStatus').value;
     const tanggalSelesai = document.getElementById('inputTanggalSelesai');
     const jamSelesai = document.getElementById('inputJamSelesai');
     
     if (status === 'Resolved') {
-        if (!tanggalSelesai.value) {
-            tanggalSelesai.value = document.getElementById('inputTanggal').value || CONFIG.DEFAULT_DATE;
-        }
+        if (!tanggalSelesai.value) tanggalSelesai.value = document.getElementById('inputTanggal').value || CONFIG.DEFAULT_DATE;
         if (!jamSelesai.value) {
             const now = new Date();
-            const hh = String(now.getHours()).padStart(2, '0');
-            const mm = String(now.getMinutes()).padStart(2, '0');
-            jamSelesai.value = `${hh}:${mm}`;
+            jamSelesai.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         }
         calculateDowntime();
     } else {
@@ -250,7 +182,6 @@ function handleStatusChange() {
     }
 }
 
-// DOWNTIME CALCULATOR
 function calculateDowntime() {
     const tglMulai = document.getElementById('inputTanggal').value;
     const jamMulai = document.getElementById('inputJamMulai').value;
@@ -283,7 +214,6 @@ function calculateDowntime() {
     }
 }
 
-// FORM SUBMISSION (INSERT & UPDATE)
 async function handleFormSubmit(e) {
     e.preventDefault();
 
@@ -299,13 +229,10 @@ async function handleFormSubmit(e) {
         return;
     }
 
-    if (!kategoriValue && SUB_CATEGORIES[sumberValue]) {
-        kategoriValue = SUB_CATEGORIES[sumberValue][0];
-    }
+    if (!kategoriValue && SUB_CATEGORIES[sumberValue]) kategoriValue = SUB_CATEGORIES[sumberValue][0];
 
     const downtimeText = document.getElementById('inputDowntime').value;
 
-    // Hitung downtime_menit untuk Supabase (tipe integer)
     let downtimeMenitInt = 0;
     if (downtimeText && !downtimeText.includes("Error")) {
         const days = parseInt(downtimeText.match(/(\d+)\s*Hari/) || [0]) || 0;
@@ -314,7 +241,6 @@ async function handleFormSubmit(e) {
         downtimeMenitInt = (days * 24 * 60) + (hours * 60) + mins;
     }
 
-    // Payload disesuaikan dengan nama kolom di Supabase
     const supabasePayload = {
         tanggal_kejadian: document.getElementById('inputTanggal').value,
         tanggal_solved: tanggalSelesaiValue || null,
@@ -327,7 +253,8 @@ async function handleFormSubmit(e) {
         downtime_menit: downtimeMenitInt,
         downtime_formatted: downtimeText,
         keterangan: document.getElementById('inputKeterangan').value.trim(),
-        status_ticket: statusValue
+        status_ticket: statusValue,
+        created_by: document.getElementById('inputOperator') ? document.getElementById('inputOperator').value : 'System'
     };
 
     if (editIndex >= 0) {
@@ -337,21 +264,31 @@ async function handleFormSubmit(e) {
         }
         
         const existingId = incidents[editIndex].id;
-        supabasePayload.id = existingId; // Sertakan ID untuk update (upsert)
+        supabasePayload.id = existingId; 
         
         await saveToStorage('UPDATE', supabasePayload);
         
-        // Update state lokal
         incidents[editIndex] = {
             ...incidents[editIndex],
-            ...supabasePayload
+            tanggal: supabasePayload.tanggal_kejadian,
+            tanggalSelesai: supabasePayload.tanggal_solved,
+            mitra: supabasePayload.nama_mitra,
+            idPelanggan: supabasePayload.id_pelanggan,
+            sumber: supabasePayload.sumber_masalah,
+            kategori: supabasePayload.detail_kategori,
+            jamMulai: supabasePayload.jam_kejadian,
+            jamSelesai: supabasePayload.jam_solved,
+            downtime_formatted: supabasePayload.downtime_formatted,
+            downtimeText: supabasePayload.downtime_formatted,
+            keterangan: supabasePayload.keterangan,
+            status: supabasePayload.status_ticket,
+            createdBy: supabasePayload.created_by
         };
     } else {
-        supabasePayload.id = Date.now(); // Generate ID baru (bigint)
+        supabasePayload.id = Date.now(); 
         
         await saveToStorage('INSERT', supabasePayload);
         
-        // Tambah ke state lokal (dengan mapping balik)
         incidents.unshift({
             id: supabasePayload.id,
             tanggal: supabasePayload.tanggal_kejadian,
@@ -366,7 +303,7 @@ async function handleFormSubmit(e) {
             downtimeText: supabasePayload.downtime_formatted,
             keterangan: supabasePayload.keterangan,
             status: supabasePayload.status_ticket,
-            createdBy: currentUser ? currentUser.name : 'System'
+            createdBy: supabasePayload.created_by 
         });
     }
 
@@ -385,15 +322,13 @@ function resetForm() {
     document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
     document.getElementById('inputStatus').value = 'Pending';
     document.getElementById('inputDowntime').value = '';
+    if(document.getElementById('inputOperator')) document.getElementById('inputOperator').value = '';
     
     updateSubCategoryOptions();
 }
 
 function editRecord(id) {
-    if (currentUser && currentUser.role !== 'Super Admin') {
-        alert('Akses Ditolak: Hanya Super Admin yang dapat mengedit laporan.');
-        return;
-    }
+    
 
     const index = incidents.findIndex(item => item.id === id);
     if (index === -1) return;
@@ -414,6 +349,10 @@ function editRecord(id) {
     document.getElementById('inputKeterangan').value = item.keterangan;
     document.getElementById('inputStatus').value = item.status;
 
+    if(document.getElementById('inputOperator')) {
+        document.getElementById('inputOperator').value = item.createdBy || '';
+    }
+
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i> Update Report';
     document.getElementById('btnCancelEdit').classList.remove('hidden');
 
@@ -421,11 +360,7 @@ function editRecord(id) {
 }
 
 async function deleteRecord(id) {
-    if (currentUser && currentUser.role !== 'Super Admin') {
-        alert('Akses Ditolak: Hanya Super Admin yang dapat menghapus laporan.');
-        return;
-    }
-
+   
     if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini?')) {
         await saveToStorage('DELETE', id);
         incidents = incidents.filter(item => item.id !== id);
@@ -478,7 +413,6 @@ function clearFilter() {
     renderApp();
 }
 
-// FILTER & RENDER DATA
 function getFilteredIncidents() {
     const search = document.getElementById('filterSearch').value.toLowerCase();
     const month = document.getElementById('filterMonth').value;
@@ -504,7 +438,6 @@ function getFilteredIncidents() {
 function renderApp() {
     const filtered = getFilteredIncidents();
 
-    // Stats Card Update
     const todayStr = CONFIG.DEFAULT_DATE;
     const todayIncidents = incidents.filter(i => i.tanggal === todayStr);
     document.getElementById('statToday').innerText = todayIncidents.length;
@@ -578,8 +511,8 @@ function renderApp() {
                 <td class="p-3 text-center">
                     <div class="flex items-center justify-center space-x-1.5">
                         <button onclick="showDetail(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-sky-600 transition" title="Detail"><i class="fa-solid fa-eye"></i></button>
-                        ${isSuperAdmin ? `<button onclick="editRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-amber-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>` : ''}
-                        ${isSuperAdmin ? `<button onclick="deleteRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-rose-100 rounded text-rose-600 transition" title="Hapus"><i class="fa-solid fa-trash"></i></button>` : ''}
+                                                <button onclick="editRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-amber-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-rose-100 rounded text-rose-600 transition" title="Hapus"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </td>
             `;
@@ -600,9 +533,6 @@ function changePage(delta) {
     renderApp();
 }
 
-// ==========================================
-// CHART.JS RENDER
-// ==========================================
 function renderCharts() {
     const mitraCountMap = {};
     incidents.forEach(i => {
@@ -624,16 +554,7 @@ function renderCharts() {
                     borderRadius: 6
                 }]
             },
-            options: {
-                indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#f1f5f9' } },
-                    y: { ticks: { color: '#334155' }, grid: { display: false } }
-                }
-            }
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#f1f5f9' } }, y: { ticks: { color: '#334155' }, grid: { display: false } } } }
         });
     }
 
@@ -647,25 +568,14 @@ function renderCharts() {
             type: 'doughnut',
             data: {
                 labels: ['Sisi Metro', 'Sisi Mikrotik'],
-                datasets: [{
-                    data: [metroCount, mikrotikCount],
-                    backgroundColor: ['#e11d48', '#f59e0b'],
-                    borderWidth: 2,
-                    borderColor: '#ffffff'
-                }]
+                datasets: [{ data: [metroCount, mikrotikCount], backgroundColor: ['#e11d48', '#f59e0b'], borderWidth: 2, borderColor: '#ffffff' }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: { color: '#475569' } } }
-            }
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#475569' } } } }
         });
     }
 
     const trendMap = {};
-    incidents.forEach(i => {
-        if (i.tanggal) trendMap[i.tanggal] = (trendMap[i.tanggal] || 0) + 1;
-    });
+    incidents.forEach(i => { if (i.tanggal) trendMap[i.tanggal] = (trendMap[i.tanggal] || 0) + 1; });
     const sortedDates = Object.keys(trendMap).sort().slice(-10);
 
     if (dailyTrendChartInstance) dailyTrendChartInstance.destroy();
@@ -675,42 +585,20 @@ function renderCharts() {
             type: 'line',
             data: {
                 labels: sortedDates,
-                datasets: [{
-                    label: 'Insiden',
-                    data: sortedDates.map(d => trendMap[d]),
-                    borderColor: '#059669',
-                    backgroundColor: 'rgba(5, 150, 105, 0.08)',
-                    fill: true,
-                    tension: 0.3
-                }]
+                datasets: [{ label: 'Insiden', data: sortedDates.map(d => trendMap[d]), borderColor: '#059669', backgroundColor: 'rgba(5, 150, 105, 0.08)', fill: true, tension: 0.3 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: {
-                    x: { ticks: { color: '#64748b' }, grid: { color: '#f1f5f9' } },
-                    y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#f1f5f9' } }
-                }
-            }
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: '#64748b' }, grid: { color: '#f1f5f9' } }, y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#f1f5f9' } } } }
         });
     }
 }
 
-// ==========================================
-// EXPORT EXCEL & BACKUP/RESTORE
-// ==========================================
 function openExportModal() {
     const selectMonth = document.getElementById('exportMonthSelect');
     if (!selectMonth) return;
     selectMonth.innerHTML = '<option value="ALL">Semua Bulan (All Time)</option>';
 
     const monthsSet = new Set();
-    incidents.forEach(item => {
-        if (item.tanggal && item.tanggal.length >= 7) {
-            monthsSet.add(item.tanggal.substring(0, 7));
-        }
-    });
+    incidents.forEach(item => { if (item.tanggal && item.tanggal.length >= 7) monthsSet.add(item.tanggal.substring(0, 7)); });
 
     Array.from(monthsSet).sort().reverse().forEach(m => {
         const option = document.createElement('option');
@@ -732,16 +620,11 @@ function confirmExportToExcel() {
 
     let exportData = incidents;
 
-    if (selectedMonth !== 'ALL') {
-        exportData = exportData.filter(i => (i.tanggal && i.tanggal.startsWith(selectedMonth)) || i.status === 'Pending');
-    }
-
-    if (selectedStatus !== 'ALL') {
-        exportData = exportData.filter(i => i.status === selectedStatus);
-    }
+    if (selectedMonth !== 'ALL') exportData = exportData.filter(i => (i.tanggal && i.tanggal.startsWith(selectedMonth)) || i.status === 'Pending');
+    if (selectedStatus !== 'ALL') exportData = exportData.filter(i => i.status === selectedStatus);
 
     if (exportData.length === 0) {
-        alert('Tidak ada data yang sesuai dengan kriteria filter bulan / status tersebut.');
+        alert('Tidak ada data yang sesuai dengan kriteria filter.');
         return;
     }
 
@@ -758,14 +641,14 @@ function confirmExportToExcel() {
         'Durasi Downtime': item.downtimeText || item.downtime_formatted || '-',
         'Catatan / Root Cause': item.keterangan,
         'Status Ticket': item.status,
-        'Operator NOC': item.createdBy || 'System'
+        'Operator NOC': item.createdBy || 'System' // Mengambil dari nama operator
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelRows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Gangguan Mitra");
 
-        const dateStr = selectedMonth === 'ALL' ? 'All_Time' : selectedMonth;
+    const dateStr = selectedMonth === 'ALL' ? 'All_Time' : selectedMonth;
     XLSX.writeFile(workbook, `Report_Gangguan_ISP_Mitra_${dateStr}.xlsx`);
     closeExportModal();
 }
@@ -798,21 +681,21 @@ async function restoreJSON(e) {
         try {
             const parsedData = JSON.parse(event.target.result);
             if (Array.isArray(parsedData)) {
-                // Format ulang data JSON lama ke format Supabase sebelum di-insert
-                const payload = parsedData.map(item => ({
+                                const payload = parsedData.map(item => ({
                     id: item.id || Date.now() + Math.floor(Math.random() * 1000),
-                    tanggal_kejadian: item.tanggal,
-                    tanggal_solved: item.tanggalSelesai || null,
-                    nama_mitra: item.mitra,
-                    id_pelanggan: item.idPelanggan,
-                    sumber_masalah: item.sumber,
-                    detail_kategori: item.kategori,
-                    jam_kejadian: item.jamMulai || null,
-                    jam_solved: item.jamSelesai || null,
-                    downtime_menit: 0, // Bisa disesuaikan jika ada
+                    tanggal_kejadian: item.tanggal || item.tanggal_kejadian,
+                    tanggal_solved: item.tanggalSelesai || item.tanggal_solved || null,
+                    nama_mitra: item.mitra || item.nama_mitra,
+                    id_pelanggan: item.idPelanggan || item.id_pelanggan,
+                    sumber_masalah: item.sumber || item.sumber_masalah,
+                    detail_kategori: item.kategori || item.detail_kategori,
+                    jam_kejadian: item.jamMulai || item.jam_kejadian || null,
+                    jam_solved: item.jamSelesai || item.jam_solved || null,
+                    downtime_menit: 0, 
                     downtime_formatted: item.downtimeText || item.downtime_formatted || '',
                     keterangan: item.keterangan,
-                    status_ticket: item.status
+                    status_ticket: item.status || item.status_ticket,
+                    created_by: item.createdBy || item.created_by || 'System'
                 }));
 
                 // Insert ke Supabase secara bulk
@@ -835,4 +718,36 @@ async function restoreJSON(e) {
     if (e.target.files[0]) {
         fileReader.readAsText(e.target.files[0]);
     }
+    
 }
+
+async function loadOperators() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('operators')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        const select = document.getElementById('inputOperator');
+        if (!select) return;
+        
+        const currentVal = select.value;
+        
+        select.innerHTML = '<option value="">-- Pilih Nama --</option>';
+        
+        data.forEach(op => {
+            const option = document.createElement('option');
+            option.value = op.name;
+            option.textContent = op.name;
+            select.appendChild(option);
+        });
+
+        if (currentVal) select.value = currentVal;
+
+    } catch (err) {
+        console.error('Gagal memuat data operator:', err.message);
+    }
+}
+                    
