@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Supabase JS Client CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -261,10 +263,10 @@
                             </select>
                         </div>
 
-                        <!-- INPUT JAM KEJADIAN (FORMAT TEKS 24 JAM: HH:MM, TANPA AM/PM) -->
+                        <!-- INPUT JAM 24 JAM (FORMAT TEKS) -->
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Jam Kejadian (Start)</label>
-                            <input type="text" id="inputJamMulai" placeholder="Contoh: 14:30" maxlength="5" required onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                            <input type="text" id="inputJamMulai" placeholder="14:30" maxlength="5" required onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                         </div>
 
                         <div>
@@ -272,10 +274,10 @@
                             <input type="date" id="inputTanggalSelesai" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                         </div>
 
-                        <!-- INPUT JAM SOLVED (FORMAT TEKS 24 JAM: HH:MM, TANPA AM/PM) -->
+                        <!-- INPUT JAM SOLVED 24 JAM (FORMAT TEKS) -->
                         <div>
                             <label class="block text-xs font-semibold text-slate-600 mb-1">Jam Solved (End)</label>
-                            <input type="text" id="inputJamSelesai" placeholder="Contoh: 16:45" maxlength="5" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                            <input type="text" id="inputJamSelesai" placeholder="16:45" maxlength="5" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                         </div>
 
                         <div>
