@@ -1,43 +1,43 @@
 /* ==========================================
-   Custom Styles & Overrides for NOC Theme
+   Custom Styles & Overrides for NOC Light Theme
    ========================================== */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 body {
     font-family: 'Inter', sans-serif;
-    background-color: #0f172a; /* slate-900 */
-    color: #f8fafc; /* slate-50 */
+    background-color: #f8fafc; /* slate-50 */
+    color: #1e293b; /* slate-800 */
 }
 
 /* --- CUSTOM SCROLLBAR --- */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: #0f172a;
+    background: #f1f5f9;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #334155;
+    background: #cbd5e1;
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #475569;
+    background: #94a3b8;
 }
 
 /* --- FORM INPUT FOCUS STYLES --- */
 input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: #3b82f6 !important; /* blue-500 */
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    border-color: #0284c7 !important; /* sky-600 */
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
 }
 
 /* --- CUSTOM ANIMATIONS --- */
 .fade-in {
-    animation: fadeIn 0.3s ease-in-out;
+    animation: fadeIn 0.25s ease-in-out;
 }
 
 @keyframes fadeIn {
@@ -46,40 +46,26 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ==========================================
-   PERBAIKAN TAMPILAN INPUT DATE & MONTH (DARK MODE)
+   PERBAIKAN TAMPILAN INPUT DATE & MONTH (LIGHT MODE)
    ========================================== */
-
-/* 1. Memaksa browser menggunakan skema warna gelap untuk ikon kalender */
 input[type="date"],
 input[type="time"],
 input[type="month"] {
-    color-scheme: dark; 
+    color-scheme: light; 
+    color: #334155;
 }
 
-/* 2. Memperbaiki warna teks placeholder saat input kosong */
-input[type="date"]:invalid,
-input[type="time"]:invalid,
-input[type="month"]:invalid {
-    color: #64748b; /* Warna abu-abu (slate-500) */
-}
-
-/* 3. Membuat ikon kalender di ujung kanan input menjadi putih terang */
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator,
 input[type="month"]::-webkit-calendar-picker-indicator {
-    filter: invert(1); /* Membalik warna hitam jadi putih */
+    filter: none;
     cursor: pointer;
-    opacity: 0.7;
+    opacity: 0.6;
     transition: opacity 0.2s ease;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator:hover,
 input[type="time"]::-webkit-calendar-picker-indicator:hover,
 input[type="month"]::-webkit-calendar-picker-indicator:hover {
-    opacity: 1; /* Ikon jadi terang saat di-hover */
-}
-
-/* 4. Memperbaiki tampilan input month agar tidak terlihat seperti garis putus-putus */
-input[type="month"] {
-    color: #e2e8f0; /* Warna teks terang (slate-200) */
+    opacity: 1;
 }
