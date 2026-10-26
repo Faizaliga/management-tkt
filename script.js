@@ -39,7 +39,7 @@ const USERS = [
 let currentUser = null;
 
 // INIT APP ON LOAD
-window.onload = function() {
+window.onload = async function() {
     const savedUser = localStorage.getItem('isp_current_user');
     if (savedUser) {
         try {
@@ -50,7 +50,7 @@ window.onload = function() {
     }
 
     if (currentUser) {
-        showApp();
+        await showApp();
     } else {
         showLogin();
     }
@@ -70,10 +70,10 @@ function handleLogin(e) {
     if (found) {
         currentUser = found;
         localStorage.setItem('isp_current_user', JSON.stringify(currentUser));
-        errorEl.classList.add('hidden');
+        if (errorEl) errorEl.classList.add('hidden');
         showApp();
     } else {
-        errorEl.classList.remove('hidden');
+        if (errorEl) errorEl.classList.remove('hidden');
     }
 }
 
@@ -84,15 +84,23 @@ function handleLogout() {
 }
 
 function showLogin() {
-    document.getElementById('loginScreen').classList.remove('hidden');
-    document.getElementById('appScreen').classList.add('hidden');
+    const loginScreen = document.getElementById('loginScreen');
+    const appScreen = document.getElementById('appScreen');
+    if (loginScreen) loginScreen.classList.remove('hidden');
+    if (appScreen) appScreen.classList.add('hidden');
 }
 
-function showApp() {
-    document.getElementById('loginScreen').classList.add('hidden');
-    document.getElementById('appScreen').classList.remove('hidden');
+async function showApp() {
+    const loginScreen = document.getElementById('loginScreen');
+    const appScreen = document.getElementById('appScreen');
+    if (loginScreen) loginScreen.classList.add('hidden');
+    if (appScreen) appScreen.classList.remove('hidden');
 
-    loadFromStorage();
+    // Tampilkan loading state
+    const tbody = document.getElementById('incidentTableBody');
+    if(tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat data dari server...</td></tr>`;
+
+    await loadFromStorage();
     
     if (document.getElementById('inputTanggal')) document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
     if (document.getElementById('inputTanggalSelesai')) document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
@@ -103,11 +111,10 @@ function showApp() {
 
 function updateUserUI() {
     if (!currentUser) return;
-    document.getElementById('navUserName').innerText = currentUser.name;
-    document.getElementById('navUserRole').innerText = currentUser.role;
-    document.getElementById('navUserAvatar').src = currentUser.avatar;
+    if (document.getElementById('navUserName')) document.getElementById('navUserName').innerText = currentUser.name;
+    if (document.getElementById('navUserRole')) document.getElementById('navUserRole').innerText = currentUser.role;
+    if (document.getElementById('navUserAvatar')) document.getElementById('navUserAvatar').src = currentUser.avatar;
 
-    // KONTROL AKSES: Tombol Backup & Restore Header HANYA MUNCUL utk Super Admin
     const isSuperAdmin = currentUser.role === 'Super Admin';
     const btnBackup = document.getElementById('btnHeaderBackup');
     const btnRestore = document.getElementById('btnHeaderRestore');
@@ -122,25 +129,77 @@ function toggleSidebar() {
 }
 
 // ==========================================
-// STORAGE & FORM MANAGEMENT
+// STORAGE (SUPABASE & LOCAL)
 // ==========================================
-function loadFromStorage() {
-    const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
-    if (stored) {
-        try {
-            incidents = JSON.parse(stored);
-            if (!Array.isArray(incidents)) incidents = [];
-        } catch (e) {
-            incidents = [];
+async function loadFromStorage() {
+    try {
+        // Ambil dari Supabase
+        const { data, error } = await supabaseClient
+            .from('tickets')
+            .select('*')
+            .order('tanggal_kejadian', { ascending: false })
+            .order('jam_kejadian', { ascending: false });
+
+        if (error) throw error;
+
+        // Mapping dari format Supabase ke format JS App
+        incidents = data.map(item => ({
+            id: item.id,
+            tanggal: item.tanggal_kejadian,
+            tanggalSelesai: item.tanggal_solved,
+            mitra: item.nama_mitra,
+            idPelanggan: item.id_pelanggan,
+            sumber: item.sumber_masalah,
+            kategori: item.detail_kategori,
+            jamMulai: item.jam_kejadian,
+            jamSelesai: item.jam_solved,
+            downtime_formatted: item.downtime_formatted,
+            downtimeText: item.downtime_formatted,
+            keterangan: item.keterangan,
+            status: item.status_ticket,
+            createdBy: 'System' // Sesuaikan jika ada kolom created_by
+        }));
+
+        // Simpan cache ke local storage
+        localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
+    } catch (err) {
+        console.error('Gagal load dari Supabase:', err.message);
+        // Fallback ke LocalStorage jika Supabase error
+        const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
+        if (stored) {
+            try {
+                incidents = JSON.parse(stored);
+                if (!Array.isArray(incidents)) incidents = [];
+            } catch (e) {
+                incidents = [];
+            }
+        } else {
+            incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
         }
-    } else {
-        incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
-        saveToStorage();
     }
 }
 
-function saveToStorage() {
+async function saveToStorage(action, payload) {
+    // Simpan ke local storage sebagai backup cache
     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
+
+    try {
+        if (action === 'INSERT' || action === 'UPDATE') {
+            const { data, error } = await supabaseClient
+                .from('tickets')
+                .upsert([payload], { onConflict: 'id' });
+            if (error) throw error;
+        } else if (action === 'DELETE') {
+            const { error } = await supabaseClient
+                .from('tickets')
+                .delete()
+                .eq('id', payload);
+            if (error) throw error;
+        }
+    } catch (err) {
+        console.error('Gagal sinkronisasi ke Supabase:', err.message);
+        alert('Peringatan: Data tersimpan secara lokal, tapi gagal sinkron ke server. Error: ' + err.message);
+    }
 }
 
 // DYNAMIC CATEGORIES BASED ON SOURCE
@@ -224,8 +283,8 @@ function calculateDowntime() {
     }
 }
 
-// FORM SUBMISSION
-function handleFormSubmit(e) {
+// FORM SUBMISSION (INSERT & UPDATE)
+async function handleFormSubmit(e) {
     e.preventDefault();
 
     const editIndex = parseInt(document.getElementById('editIndex').value);
@@ -246,20 +305,29 @@ function handleFormSubmit(e) {
 
     const downtimeText = document.getElementById('inputDowntime').value;
 
-    const newItem = {
-        id: editIndex >= 0 ? incidents[editIndex].id : Date.now(),
-        tanggal: document.getElementById('inputTanggal').value,
-        tanggalSelesai: tanggalSelesaiValue,
-        mitra: document.getElementById('inputMitra').value.trim(),
-        idPelanggan: document.getElementById('inputIdPelanggan').value.trim(),
-        sumber: sumberValue,
-        kategori: kategoriValue,
-        jamMulai: document.getElementById('inputJamMulai').value,
-        jamSelesai: jamSelesaiValue,
-        downtimeText: downtimeText,
+    // Hitung downtime_menit untuk Supabase (tipe integer)
+    let downtimeMenitInt = 0;
+    if (downtimeText && !downtimeText.includes("Error")) {
+        const days = parseInt(downtimeText.match(/(\d+)\s*Hari/) || [0]) || 0;
+        const hours = parseInt(downtimeText.match(/(\d+)\s*Jam/) || [0]) || 0;
+        const mins = parseInt(downtimeText.match(/(\d+)\s*Menit/) || [0]) || 0;
+        downtimeMenitInt = (days * 24 * 60) + (hours * 60) + mins;
+    }
+
+    // Payload disesuaikan dengan nama kolom di Supabase
+    const supabasePayload = {
+        tanggal_kejadian: document.getElementById('inputTanggal').value,
+        tanggal_solved: tanggalSelesaiValue || null,
+        nama_mitra: document.getElementById('inputMitra').value.trim(),
+        id_pelanggan: document.getElementById('inputIdPelanggan').value.trim(),
+        sumber_masalah: sumberValue,
+        detail_kategori: kategoriValue,
+        jam_kejadian: document.getElementById('inputJamMulai').value || null,
+        jam_solved: jamSelesaiValue || null,
+        downtime_menit: downtimeMenitInt,
+        downtime_formatted: downtimeText,
         keterangan: document.getElementById('inputKeterangan').value.trim(),
-        status: statusValue,
-        createdBy: currentUser ? currentUser.name : 'System'
+        status_ticket: statusValue
     };
 
     if (editIndex >= 0) {
@@ -267,18 +335,48 @@ function handleFormSubmit(e) {
             alert('Akses Ditolak: Hanya Super Admin yang dapat mengubah data!');
             return;
         }
-        incidents[editIndex] = newItem;
+        
+        const existingId = incidents[editIndex].id;
+        supabasePayload.id = existingId; // Sertakan ID untuk update (upsert)
+        
+        await saveToStorage('UPDATE', supabasePayload);
+        
+        // Update state lokal
+        incidents[editIndex] = {
+            ...incidents[editIndex],
+            ...supabasePayload
+        };
     } else {
-        incidents.unshift(newItem);
+        supabasePayload.id = Date.now(); // Generate ID baru (bigint)
+        
+        await saveToStorage('INSERT', supabasePayload);
+        
+        // Tambah ke state lokal (dengan mapping balik)
+        incidents.unshift({
+            id: supabasePayload.id,
+            tanggal: supabasePayload.tanggal_kejadian,
+            tanggalSelesai: supabasePayload.tanggal_solved,
+            mitra: supabasePayload.nama_mitra,
+            idPelanggan: supabasePayload.id_pelanggan,
+            sumber: supabasePayload.sumber_masalah,
+            kategori: supabasePayload.detail_kategori,
+            jamMulai: supabasePayload.jam_kejadian,
+            jamSelesai: supabasePayload.jam_solved,
+            downtime_formatted: supabasePayload.downtime_formatted,
+            downtimeText: supabasePayload.downtime_formatted,
+            keterangan: supabasePayload.keterangan,
+            status: supabasePayload.status_ticket,
+            createdBy: currentUser ? currentUser.name : 'System'
+        });
     }
 
-    saveToStorage();
     resetForm();
     renderApp();
 }
 
 function resetForm() {
-    document.getElementById('incidentForm').reset();
+    const form = document.getElementById('incidentForm');
+    if (form) form.reset();
     document.getElementById('editIndex').value = -1;
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report';
     document.getElementById('btnCancelEdit').classList.add('hidden');
@@ -311,8 +409,8 @@ function editRecord(id) {
     updateSubCategoryOptions(item.kategori);
     
     document.getElementById('inputJamMulai').value = item.jamMulai;
-    document.getElementById('inputJamSelesai').value = item.jamSelesai;
-    document.getElementById('inputDowntime').value = item.downtimeText || '';
+    document.getElementById('inputJamSelesai').value = item.jamSelesai || '';
+    document.getElementById('inputDowntime').value = item.downtimeText || item.downtime_formatted || '';
     document.getElementById('inputKeterangan').value = item.keterangan;
     document.getElementById('inputStatus').value = item.status;
 
@@ -322,15 +420,15 @@ function editRecord(id) {
     window.scrollTo({ top: document.getElementById('incidentForm').offsetTop - 80, behavior: 'smooth' });
 }
 
-function deleteRecord(id) {
+async function deleteRecord(id) {
     if (currentUser && currentUser.role !== 'Super Admin') {
         alert('Akses Ditolak: Hanya Super Admin yang dapat menghapus laporan.');
         return;
     }
 
     if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini?')) {
+        await saveToStorage('DELETE', id);
         incidents = incidents.filter(item => item.id !== id);
-        saveToStorage();
         renderApp();
     }
 }
@@ -351,7 +449,7 @@ function showDetail(id) {
         </div>
         <div class="grid grid-cols-2 gap-2 border-b border-slate-200 pb-3">
             <div><span class="text-xs text-slate-400 block">Sumber Gangguan</span> <span class="font-semibold ${item.sumber==='Metro'?'text-rose-600':'text-amber-600'}">${item.sumber}</span></div>
-            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> <span class="font-bold text-emerald-600">${item.downtimeText || '-'}</span></div>
+            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> <span class="font-bold text-emerald-600">${item.downtimeText || item.downtime_formatted || '-'}</span></div>
         </div>
         <div>
             <span class="text-xs text-slate-400 block mb-1">Specific Category</span>
@@ -418,10 +516,11 @@ function renderApp() {
 
     let totalDowntimeMinutes = 0;
     incidents.forEach(item => {
-        if (item.downtimeText) {
-            const days = parseInt(item.downtimeText.match(/(\d+)\s*Hari/) || [0]);
-            const hours = parseInt(item.downtimeText.match(/(\d+)\s*Jam/) || [0]);
-            const mins = parseInt(item.downtimeText.match(/(\d+)\s*Menit/) || [0]);
+        const textDt = item.downtimeText || item.downtime_formatted;
+        if (textDt) {
+            const days = parseInt(textDt.match(/(\d+)\s*Hari/) || [0]);
+            const hours = parseInt(textDt.match(/(\d+)\s*Jam/) || [0]);
+            const mins = parseInt(textDt.match(/(\d+)\s*Menit/) || [0]);
             totalDowntimeMinutes += (days * 24 * 60) + (hours * 60) + mins;
         }
     });
@@ -470,7 +569,7 @@ function renderApp() {
                     </span>
                 </td>
                 <td class="p-3 text-slate-600 max-w-xs truncate" title="${item.kategori}">${item.kategori}</td>
-                <td class="p-3 font-semibold text-sky-600">${item.downtimeText || '-'}</td>
+                <td class="p-3 font-semibold text-sky-600">${item.downtimeText || item.downtime_formatted || '-'}</td>
                 <td class="p-3">
                     <span class="px-2 py-0.5 text-[11px] font-medium rounded ${item.status === 'Resolved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-100 text-amber-700 border border-amber-200 animate-pulse'}">
                         ${item.status === 'Pending' ? 'OPEN / Pending' : 'Resolved'}
@@ -603,6 +702,7 @@ function renderCharts() {
 // ==========================================
 function openExportModal() {
     const selectMonth = document.getElementById('exportMonthSelect');
+    if (!selectMonth) return;
     selectMonth.innerHTML = '<option value="ALL">Semua Bulan (All Time)</option>';
 
     const monthsSet = new Set();
@@ -655,7 +755,7 @@ function confirmExportToExcel() {
         'ID Pelanggan / IP': item.idPelanggan,
         'Sumber Masalah': item.sumber,
         'Kategori Issue': item.kategori,
-        'Durasi Downtime': item.downtimeText || '-',
+        'Durasi Downtime': item.downtimeText || item.downtime_formatted || '-',
         'Catatan / Root Cause': item.keterangan,
         'Status Ticket': item.status,
         'Operator NOC': item.createdBy || 'System'
@@ -665,12 +765,12 @@ function confirmExportToExcel() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Gangguan Mitra");
 
-    const dateStr = selectedMonth === 'ALL' ? 'All_Time' : selectedMonth;
+        const dateStr = selectedMonth === 'ALL' ? 'All_Time' : selectedMonth;
     XLSX.writeFile(workbook, `Report_Gangguan_ISP_Mitra_${dateStr}.xlsx`);
     closeExportModal();
 }
 
-function backupJSON() {
+async function backupJSON() {
     if (currentUser && currentUser.role !== 'Super Admin') {
         alert('Akses Ditolak: Hanya Super Admin yang dapat mendownload backup JSON.');
         return;
@@ -688,25 +788,48 @@ function backupJSON() {
     downloadAnchor.remove();
 }
 
-function restoreJSON(e) {
+async function restoreJSON(e) {
     if (currentUser && currentUser.role !== 'Super Admin') {
         alert('Akses Ditolak: Hanya Super Admin yang dapat melakukan Restore data.');
         return;
     }
     const fileReader = new FileReader();
-    fileReader.onload = function(event) {
+    fileReader.onload = async function(event) {
         try {
             const parsedData = JSON.parse(event.target.result);
             if (Array.isArray(parsedData)) {
-                incidents = parsedData;
-                saveToStorage();
+                // Format ulang data JSON lama ke format Supabase sebelum di-insert
+                const payload = parsedData.map(item => ({
+                    id: item.id || Date.now() + Math.floor(Math.random() * 1000),
+                    tanggal_kejadian: item.tanggal,
+                    tanggal_solved: item.tanggalSelesai || null,
+                    nama_mitra: item.mitra,
+                    id_pelanggan: item.idPelanggan,
+                    sumber_masalah: item.sumber,
+                    detail_kategori: item.kategori,
+                    jam_kejadian: item.jamMulai || null,
+                    jam_solved: item.jamSelesai || null,
+                    downtime_menit: 0, // Bisa disesuaikan jika ada
+                    downtime_formatted: item.downtimeText || item.downtime_formatted || '',
+                    keterangan: item.keterangan,
+                    status_ticket: item.status
+                }));
+
+                // Insert ke Supabase secara bulk
+                const { data, error } = await supabaseClient
+                    .from('tickets')
+                    .upsert(payload, { onConflict: 'id' });
+
+                if (error) throw error;
+
+                alert('Data berhasil di-restore ke Supabase!');
+                await loadFromStorage(); // Reload data dari Supabase
                 renderApp();
-                alert('Data berhasil di-restore!');
             } else {
                 alert('Format file JSON tidak valid.');
             }
         } catch (err) {
-            alert('Gagal membaca file JSON.');
+            alert('Gagal membaca file JSON atau gagal restore ke database: ' + err.message);
         }
     };
     if (e.target.files[0]) {
