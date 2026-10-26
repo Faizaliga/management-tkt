@@ -1,4 +1,6 @@
-// Core Application Logic
+// ==========================================
+// CONFIG & INITIAL STATE
+// ==========================================
 let incidents = [];
 let currentPage = 1;
 
@@ -7,50 +9,148 @@ let topMitraChartInstance = null;
 let sourceRatioChartInstance = null;
 let dailyTrendChartInstance = null;
 
-// INIT APP
-window.onload = async function() {
-    await loadFromSupabase();
-    document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
-    document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
-    renderApp();
+// ==========================================
+// SISTEM AKUN & LOGIN (3 USERS)
+// ==========================================
+const USERS = [
+    {
+        username: "admin",
+        password: "Iga@1996",
+        name: "Faizal Iga Pratama",
+        role: "Super Admin",
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256"
+    },
+    {
+        username: "noc",
+        password: "nocpassword",
+        name: "Noc Baik",
+        role: "NOC Engineer (L2)",
+        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=256"
+    },
+    {
+        username: "helpdesk",
+        password: "helpdeskpassword",
+        name: "Helpdesk Gokil",
+        role: "Helpdesk Staff (L1)",
+        avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=256"
+    }
+];
+
+let currentUser = null;
+
+// INIT APP ON LOAD
+window.onload = function() {
+    const savedUser = localStorage.getItem('isp_current_user');
+    if (savedUser) {
+        try {
+            currentUser = JSON.parse(savedUser);
+        } catch (e) {
+            currentUser = null;
+        }
+    }
+
+    if (currentUser) {
+        showApp();
+    } else {
+        showLogin();
+    }
 };
 
-// AMBIL DATA REAL-TIME DARI DATABASE SUPABASE
-async function loadFromSupabase() {
-    try {
-        const { data, error } = await db
-            .from('tickets')
-            .select('*')
-            .order('id', { ascending: false });
+// ==========================================
+// FUNGSIONALITAS AUTH & TOGGLE SIDEBAR
+// ==========================================
+function handleLogin(e) {
+    e.preventDefault();
+    const userInput = document.getElementById('loginUsername').value.trim();
+    const passInput = document.getElementById('loginPassword').value.trim();
+    const errorEl = document.getElementById('loginError');
 
-        if (error) throw error;
-        
-        // Map kolom dari Supabase Postgres ke format variabel frontend
-        incidents = (data || []).map(item => ({
-            id: item.id,
-            tanggal: item.tanggal_kejadian,
-            tanggalSelesai: item.tanggal_solved,
-            mitra: item.nama_mitra,
-            idPelanggan: item.id_pelanggan,
-            sumber: item.sumber_masalah,
-            kategori: item.detail_kategori,
-            jamMulai: item.jam_kejadian,
-            jamSelesai: item.jam_solved,
-            downtimeText: item.downtime_formatted,
-            keterangan: item.keterangan,
-            status: item.status_ticket
-        }));
-    } catch (err) {
-        console.error("Gagal terhubung ke Supabase:", err.message);
-        incidents = [];
+    const found = USERS.find(u => u.username === userInput && u.password === passInput);
+
+    if (found) {
+        currentUser = found;
+        localStorage.setItem('isp_current_user', JSON.stringify(currentUser));
+        errorEl.classList.add('hidden');
+        showApp();
+    } else {
+        errorEl.classList.remove('hidden');
     }
+}
+
+function handleLogout() {
+    currentUser = null;
+    localStorage.removeItem('isp_current_user');
+    showLogin();
+}
+
+function showLogin() {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('appScreen').classList.add('hidden');
+}
+
+function showApp() {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('appScreen').classList.remove('hidden');
+
+    loadFromStorage();
+    
+    if (document.getElementById('inputTanggal')) document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
+    if (document.getElementById('inputTanggalSelesai')) document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
+
+    updateUserUI();
+    renderApp();
+}
+
+function updateUserUI() {
+    if (!currentUser) return;
+    document.getElementById('navUserName').innerText = currentUser.name;
+    document.getElementById('navUserRole').innerText = currentUser.role;
+    document.getElementById('navUserAvatar').src = currentUser.avatar;
+
+    // KONTROL AKSES: Tombol Backup & Restore Header HANYA MUNCUL utk Super Admin
+    const isSuperAdmin = currentUser.role === 'Super Admin';
+    const btnBackup = document.getElementById('btnHeaderBackup');
+    const btnRestore = document.getElementById('btnHeaderRestore');
+
+    if (btnBackup) btnBackup.style.display = isSuperAdmin ? 'flex' : 'none';
+    if (btnRestore) btnRestore.style.display = isSuperAdmin ? 'flex' : 'none';
+}
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.classList.toggle('-translate-x-full');
+}
+
+// ==========================================
+// STORAGE & FORM MANAGEMENT
+// ==========================================
+function loadFromStorage() {
+    const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
+    if (stored) {
+        try {
+            incidents = JSON.parse(stored);
+            if (!Array.isArray(incidents)) incidents = [];
+        } catch (e) {
+            incidents = [];
+        }
+    } else {
+        incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
+        saveToStorage();
+    }
+}
+
+function saveToStorage() {
+    localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
 }
 
 // DYNAMIC CATEGORIES BASED ON SOURCE
 function updateSubCategoryOptions(selectedSub = '') {
-    const sumber = document.getElementById('inputSumber').value;
+    const sumberSelect = document.getElementById('inputSumber');
     const kategoriSelect = document.getElementById('inputKategori');
     
+    if (!sumberSelect || !kategoriSelect) return;
+    
+    const sumber = sumberSelect.value;
     kategoriSelect.innerHTML = '<option value="">-- Pilih Kategori --</option>';
 
     if (sumber && SUB_CATEGORIES[sumber]) {
@@ -68,7 +168,30 @@ function updateSubCategoryOptions(selectedSub = '') {
     }
 }
 
-// DOWNTIME CALCULATOR (FORMAT: X Hari Y Jam Z Menit)
+// HANDLE STATUS CHANGE (AUTO FILL DATE/TIME IF RESOLVED)
+function handleStatusChange() {
+    const status = document.getElementById('inputStatus').value;
+    const tanggalSelesai = document.getElementById('inputTanggalSelesai');
+    const jamSelesai = document.getElementById('inputJamSelesai');
+    
+    if (status === 'Resolved') {
+        if (!tanggalSelesai.value) {
+            tanggalSelesai.value = document.getElementById('inputTanggal').value || CONFIG.DEFAULT_DATE;
+        }
+        if (!jamSelesai.value) {
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, '0');
+            const mm = String(now.getMinutes()).padStart(2, '0');
+            jamSelesai.value = `${hh}:${mm}`;
+        }
+        calculateDowntime();
+    } else {
+        jamSelesai.value = '';
+        document.getElementById('inputDowntime').value = '';
+    }
+}
+
+// DOWNTIME CALCULATOR
 function calculateDowntime() {
     const tglMulai = document.getElementById('inputTanggal').value;
     const jamMulai = document.getElementById('inputJamMulai').value;
@@ -81,7 +204,7 @@ function calculateDowntime() {
         const endDateTime = new Date(`${tglSelesai}T${jamSelesai}:00`);
 
         if (endDateTime < startDateTime) {
-            downtimeInput.value = "Waktu tidak valid!";
+            downtimeInput.value = "Error: Waktu selesai lebih awal!";
             return;
         }
 
@@ -95,18 +218,14 @@ function calculateDowntime() {
         if (diffHours > 0) hasil.push(`${diffHours} Jam`);
         if (diffMinutes > 0) hasil.push(`${diffMinutes} Menit`);
         
-        if (hasil.length === 0) {
-            downtimeInput.value = "0 Menit";
-        } else {
-            downtimeInput.value = hasil.join(" ");
-        }
+        downtimeInput.value = hasil.length === 0 ? "0 Menit" : hasil.join(" ");
     } else {
         downtimeInput.value = '';
     }
 }
 
-// FORM SUBMISSION (CREATE & UPDATE DI SUPABASE)
-async function handleFormSubmit(e) {
+// FORM SUBMISSION
+function handleFormSubmit(e) {
     e.preventDefault();
 
     const editIndex = parseInt(document.getElementById('editIndex').value);
@@ -127,45 +246,33 @@ async function handleFormSubmit(e) {
 
     const downtimeText = document.getElementById('inputDowntime').value;
 
-    const payload = {
-        tanggal_kejadian: document.getElementById('inputTanggal').value,
-        tanggal_solved: tanggalSelesaiValue || null,
-        nama_mitra: document.getElementById('inputMitra').value.trim(),
-        id_pelanggan: document.getElementById('inputIdPelanggan').value.trim(),
-        sumber_masalah: sumberValue,
-        detail_kategori: kategoriValue,
-        jam_kejadian: document.getElementById('inputJamMulai').value,
-        jam_solved: jamSelesaiValue || null,
-        downtime_formatted: downtimeText,
+    const newItem = {
+        id: editIndex >= 0 ? incidents[editIndex].id : Date.now(),
+        tanggal: document.getElementById('inputTanggal').value,
+        tanggalSelesai: tanggalSelesaiValue,
+        mitra: document.getElementById('inputMitra').value.trim(),
+        idPelanggan: document.getElementById('inputIdPelanggan').value.trim(),
+        sumber: sumberValue,
+        kategori: kategoriValue,
+        jamMulai: document.getElementById('inputJamMulai').value,
+        jamSelesai: jamSelesaiValue,
+        downtimeText: downtimeText,
         keterangan: document.getElementById('inputKeterangan').value.trim(),
-        status_ticket: statusValue
+        status: statusValue,
+        createdBy: currentUser ? currentUser.name : 'System'
     };
 
     if (editIndex >= 0) {
-        // Mode Update Ke Database
-        const targetId = incidents[editIndex].id;
-        const { error } = await db
-            .from('tickets')
-            .update(payload)
-            .eq('id', targetId);
-
-        if (error) {
-            alert("Gagal mengupdate data: " + error.message);
+        if (currentUser && currentUser.role !== 'Super Admin') {
+            alert('Akses Ditolak: Hanya Super Admin yang dapat mengubah data!');
             return;
         }
+        incidents[editIndex] = newItem;
     } else {
-        // Mode Insert Ke Database
-        const { error } = await db
-            .from('tickets')
-            .insert([payload]);
-
-        if (error) {
-            alert("Gagal menyimpan data: " + error.message);
-            return;
-        }
+        incidents.unshift(newItem);
     }
 
-    await loadFromSupabase();
+    saveToStorage();
     resetForm();
     renderApp();
 }
@@ -185,6 +292,11 @@ function resetForm() {
 }
 
 function editRecord(id) {
+    if (currentUser && currentUser.role !== 'Super Admin') {
+        alert('Akses Ditolak: Hanya Super Admin yang dapat mengedit laporan.');
+        return;
+    }
+
     const index = incidents.findIndex(item => item.id === id);
     if (index === -1) return;
 
@@ -192,7 +304,6 @@ function editRecord(id) {
     document.getElementById('editIndex').value = index;
     document.getElementById('inputTanggal').value = item.tanggal;
     document.getElementById('inputTanggalSelesai').value = item.tanggalSelesai || item.tanggal;
-    
     document.getElementById('inputMitra').value = item.mitra;
     document.getElementById('inputIdPelanggan').value = item.idPelanggan;
     document.getElementById('inputSumber').value = item.sumber;
@@ -200,9 +311,9 @@ function editRecord(id) {
     updateSubCategoryOptions(item.kategori);
     
     document.getElementById('inputJamMulai').value = item.jamMulai;
-    document.getElementById('inputJamSelesai').value = item.jamSelesai || '';
+    document.getElementById('inputJamSelesai').value = item.jamSelesai;
     document.getElementById('inputDowntime').value = item.downtimeText || '';
-    document.getElementById('inputKeterangan').value = item.keterangan || '';
+    document.getElementById('inputKeterangan').value = item.keterangan;
     document.getElementById('inputStatus').value = item.status;
 
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i> Update Report';
@@ -211,19 +322,15 @@ function editRecord(id) {
     window.scrollTo({ top: document.getElementById('incidentForm').offsetTop - 80, behavior: 'smooth' });
 }
 
-async function deleteRecord(id) {
-    if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini dari database cloud?')) {
-        const { error } = await db
-            .from('tickets')
-            .delete()
-            .eq('id', id);
+function deleteRecord(id) {
+    if (currentUser && currentUser.role !== 'Super Admin') {
+        alert('Akses Ditolak: Hanya Super Admin yang dapat menghapus laporan.');
+        return;
+    }
 
-        if (error) {
-            alert("Gagal menghapus data: " + error.message);
-            return;
-        }
-
-        await loadFromSupabase();
+    if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini?')) {
+        incidents = incidents.filter(item => item.id !== id);
+        saveToStorage();
         renderApp();
     }
 }
@@ -234,25 +341,28 @@ function showDetail(id) {
 
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
-        <div class="grid grid-cols-2 gap-2 border-b border-slate-700 pb-3">
-            <div><span class="text-xs text-slate-400 block">Mitra</span> <strong>${item.mitra}</strong></div>
-            <div><span class="text-xs text-slate-400 block">ID Pelanggan</span> <code>${item.idPelanggan}</code></div>
+        <div class="grid grid-cols-2 gap-2 border-b border-slate-200 pb-3">
+            <div><span class="text-xs text-slate-400 block">Mitra</span> <strong class="text-slate-700">${item.mitra}</strong></div>
+            <div><span class="text-xs text-slate-400 block">ID Pelanggan</span> <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono text-xs">${item.idPelanggan}</code></div>
         </div>
-        <div class="grid grid-cols-2 gap-2 border-b border-slate-700 pb-3">
+        <div class="grid grid-cols-2 gap-2 border-b border-slate-200 pb-3">
             <div><span class="text-xs text-slate-400 block">Tanggal Kejadian</span> ${item.tanggal} (${item.jamMulai})</div>
             <div><span class="text-xs text-slate-400 block">Tanggal Selesai</span> ${item.tanggalSelesai || '-'} (${item.jamSelesai || '-'})</div>
         </div>
-        <div class="grid grid-cols-2 gap-2 border-b border-slate-700 pb-3">
-            <div><span class="text-xs text-slate-400 block">Sumber Gangguan</span> <span class="font-semibold ${item.sumber==='Metro'?'text-red-400':'text-amber-400'}">${item.sumber}</span></div>
-            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> <span class="font-bold text-emerald-400">${item.downtimeText || '-'}</span></div>
+        <div class="grid grid-cols-2 gap-2 border-b border-slate-200 pb-3">
+            <div><span class="text-xs text-slate-400 block">Sumber Gangguan</span> <span class="font-semibold ${item.sumber==='Metro'?'text-rose-600':'text-amber-600'}">${item.sumber}</span></div>
+            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> <span class="font-bold text-emerald-600">${item.downtimeText || '-'}</span></div>
         </div>
         <div>
             <span class="text-xs text-slate-400 block mb-1">Specific Category</span>
-            <p class="font-semibold text-slate-200">${item.kategori}</p>
+            <p class="font-semibold text-slate-700">${item.kategori}</p>
         </div>
-        <div class="bg-slate-900 p-3 rounded-lg border border-slate-700">
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
             <span class="text-xs text-slate-400 block mb-1">Catatan Troubleshooting / Root Cause</span>
-            <p class="text-xs text-slate-300 italic">${item.keterangan || 'Tidak ada catatan tambahan.'}</p>
+            <p class="text-xs text-slate-600 italic">${item.keterangan || 'Tidak ada catatan tambahan.'}</p>
+        </div>
+        <div class="text-[11px] text-slate-400 pt-1">
+            Input / Updated by: <span class="font-medium text-slate-600">${item.createdBy || 'System'}</span>
         </div>
     `;
     document.getElementById('detailModal').classList.remove('hidden');
@@ -270,6 +380,7 @@ function clearFilter() {
     renderApp();
 }
 
+// FILTER & RENDER DATA
 function getFilteredIncidents() {
     const search = document.getElementById('filterSearch').value.toLowerCase();
     const month = document.getElementById('filterMonth').value;
@@ -295,6 +406,7 @@ function getFilteredIncidents() {
 function renderApp() {
     const filtered = getFilteredIncidents();
 
+    // Stats Card Update
     const todayStr = CONFIG.DEFAULT_DATE;
     const todayIncidents = incidents.filter(i => i.tanggal === todayStr);
     document.getElementById('statToday').innerText = todayIncidents.length;
@@ -326,13 +438,15 @@ function renderApp() {
     const tbody = document.getElementById('incidentTableBody');
     tbody.innerHTML = '';
 
+    const isSuperAdmin = currentUser && currentUser.role === 'Super Admin';
+
     if (pageData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500">Tidak ada data gangguan ditemukan</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">Tidak ada data gangguan ditemukan</td></tr>`;
     } else {
         pageData.forEach(item => {
             const tr = document.createElement('tr');
             const isPending = item.status === 'Pending';
-            tr.className = `hover:bg-slate-800/80 transition border-b border-slate-700/50 fade-in ${isPending ? 'bg-amber-500/5' : ''}`;
+            tr.className = `hover:bg-slate-50 transition border-b border-slate-100 ${isPending ? 'bg-amber-50/50' : ''}`;
             
             const tglMulai = item.tanggal || '-';
             const jamMulai = item.jamMulai || '--:--';
@@ -341,33 +455,32 @@ function renderApp() {
 
             const isSameDay = tglMulai === tglSelesai;
             const timeDisplay = isSameDay 
-                ? `${tglMulai} <br> <span class="text-[10px]">${jamMulai} - ${jamSelesai}</span>`
-                : `${tglMulai} ${jamMulai} <br> <span class="text-[10px] text-amber-400">s/d ${tglSelesai} ${jamSelesai}</span>`;
+                ? `${tglMulai} <br> <span class="text-[10px] text-slate-400 font-medium">${jamMulai} - ${jamSelesai}</span>`
+                : `${tglMulai} ${jamMulai} <br> <span class="text-[10px] text-amber-600 font-medium">s/d ${tglSelesai} ${jamSelesai}</span>`;
 
             tr.innerHTML = `
-                <td class="p-3 whitespace-nowrap text-slate-300 font-mono text-xs">${timeDisplay}</td>
+                <td class="p-3 whitespace-nowrap text-slate-600 font-mono text-xs">${timeDisplay}</td>
                 <td class="p-3">
-                    <div class="font-bold text-slate-200">${item.mitra}</div>
+                    <div class="font-bold text-slate-700">${item.mitra}</div>
                     <div class="text-[10px] text-slate-400 font-mono">${item.idPelanggan}</div>
                 </td>
                 <td class="p-3">
-                    <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full ${item.sumber === 'Metro' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}">
+                    <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full ${item.sumber === 'Metro' ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}">
                         ${item.sumber}
                     </span>
                 </td>
-                <td class="p-3 text-slate-300 max-w-xs truncate" title="${item.kategori}">${item.kategori}</td>
-                <td class="p-3 font-mono text-slate-300">${jamMulai} - ${jamSelesai}</td>
-                <td class="p-3 font-semibold text-cyan-400">${item.downtimeText || '-'}</td>
+                <td class="p-3 text-slate-600 max-w-xs truncate" title="${item.kategori}">${item.kategori}</td>
+                <td class="p-3 font-semibold text-sky-600">${item.downtimeText || '-'}</td>
                 <td class="p-3">
-                    <span class="px-2 py-0.5 text-[11px] font-medium rounded ${item.status === 'Resolved' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'}">
+                    <span class="px-2 py-0.5 text-[11px] font-medium rounded ${item.status === 'Resolved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-100 text-amber-700 border border-amber-200 animate-pulse'}">
                         ${item.status === 'Pending' ? 'OPEN / Pending' : 'Resolved'}
                     </span>
                 </td>
                 <td class="p-3 text-center">
-                    <div class="flex items-center justify-center space-x-2">
-                        <button onclick="showDetail(${item.id})" class="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-blue-400" title="Detail"><i class="fa-solid fa-eye"></i></button>
-                        <button onclick="editRecord(${item.id})" class="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-amber-400" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="deleteRecord(${item.id})" class="p-1.5 bg-slate-700 hover:bg-slate-600 rounded text-red-400" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+                    <div class="flex items-center justify-center space-x-1.5">
+                        <button onclick="showDetail(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-sky-600 transition" title="Detail"><i class="fa-solid fa-eye"></i></button>
+                        ${isSuperAdmin ? `<button onclick="editRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-amber-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>` : ''}
+                        ${isSuperAdmin ? `<button onclick="deleteRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-rose-100 rounded text-rose-600 transition" title="Hapus"><i class="fa-solid fa-trash"></i></button>` : ''}
                     </div>
                 </td>
             `;
@@ -388,6 +501,9 @@ function changePage(delta) {
     renderApp();
 }
 
+// ==========================================
+// CHART.JS RENDER
+// ==========================================
 function renderCharts() {
     const mitraCountMap = {};
     incidents.forEach(i => {
@@ -396,51 +512,56 @@ function renderCharts() {
     const sortedMitra = Object.entries(mitraCountMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
     if (topMitraChartInstance) topMitraChartInstance.destroy();
-    const ctx1 = document.getElementById('topMitraChart').getContext('2d');
-    topMitraChartInstance = new Chart(ctx1, {
-        type: 'bar',
-        data: {
-            labels: sortedMitra.map(x => x[0]),
-            datasets: [{
-                label: 'Jumlah Gangguan',
-                data: sortedMitra.map(x => x[1]),
-                backgroundColor: '#3b82f6',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: '#94a3b8', stepSize: 1 }, grid: { color: '#334155' } },
-                y: { ticks: { color: '#f8fafc' }, grid: { display: false } }
+    const ctx1 = document.getElementById('topMitraChart')?.getContext('2d');
+    if (ctx1) {
+        topMitraChartInstance = new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: sortedMitra.map(x => x[0]),
+                datasets: [{
+                    label: 'Jumlah Gangguan',
+                    data: sortedMitra.map(x => x[1]),
+                    backgroundColor: '#0284c7',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#f1f5f9' } },
+                    y: { ticks: { color: '#334155' }, grid: { display: false } }
+                }
             }
-        }
-    });
+        });
+    }
 
     const metroCount = incidents.filter(i => i.sumber === 'Metro').length;
     const mikrotikCount = incidents.filter(i => i.sumber === 'Mikrotik').length;
 
     if (sourceRatioChartInstance) sourceRatioChartInstance.destroy();
-    const ctx2 = document.getElementById('sourceRatioChart').getContext('2d');
-    sourceRatioChartInstance = new Chart(ctx2, {
-        type: 'doughnut',
-        data: {
-            labels: ['Sisi Metro', 'Sisi Mikrotik'],
-            datasets: [{
-                data: [metroCount, mikrotikCount],
-                backgroundColor: ['#ef4444', '#f59e0b'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { color: '#f8fafc' } } }
-        }
-    });
+    const ctx2 = document.getElementById('sourceRatioChart')?.getContext('2d');
+    if (ctx2) {
+        sourceRatioChartInstance = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: ['Sisi Metro', 'Sisi Mikrotik'],
+                datasets: [{
+                    data: [metroCount, mikrotikCount],
+                    backgroundColor: ['#e11d48', '#f59e0b'],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { color: '#475569' } } }
+            }
+        });
+    }
 
     const trendMap = {};
     incidents.forEach(i => {
@@ -449,38 +570,38 @@ function renderCharts() {
     const sortedDates = Object.keys(trendMap).sort().slice(-10);
 
     if (dailyTrendChartInstance) dailyTrendChartInstance.destroy();
-    const ctx3 = document.getElementById('dailyTrendChart').getContext('2d');
-    dailyTrendChartInstance = new Chart(ctx3, {
-        type: 'line',
-        data: {
-            labels: sortedDates,
-            datasets: [{
-                label: 'Insiden',
-                data: sortedDates.map(d => trendMap[d]),
-                borderColor: '#10b981',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                y: { ticks: { color: '#94a3b8', stepSize: 1 }, grid: { color: '#334155' } }
+    const ctx3 = document.getElementById('dailyTrendChart')?.getContext('2d');
+    if (ctx3) {
+        dailyTrendChartInstance = new Chart(ctx3, {
+            type: 'line',
+            data: {
+                labels: sortedDates,
+                datasets: [{
+                    label: 'Insiden',
+                    data: sortedDates.map(d => trendMap[d]),
+                    borderColor: '#059669',
+                    backgroundColor: 'rgba(5, 150, 105, 0.08)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#64748b' }, grid: { color: '#f1f5f9' } },
+                    y: { ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#f1f5f9' } }
+                }
             }
-        }
-    });
+        });
+    }
 }
 
+// ==========================================
+// EXPORT EXCEL & BACKUP/RESTORE
+// ==========================================
 function openExportModal() {
-    if (incidents.length === 0) {
-        alert('Tidak ada data laporan untuk di-export.');
-        return;
-    }
-
     const selectMonth = document.getElementById('exportMonthSelect');
     selectMonth.innerHTML = '<option value="ALL">Semua Bulan (All Time)</option>';
 
@@ -536,24 +657,24 @@ function confirmExportToExcel() {
         'Kategori Issue': item.kategori,
         'Durasi Downtime': item.downtimeText || '-',
         'Catatan / Root Cause': item.keterangan,
-        'Status Ticket': item.status
+        'Status Ticket': item.status,
+        'Operator NOC': item.createdBy || 'System'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelRows);
-    worksheet['!cols'] = Object.keys(excelRows[0]).map(key => ({
-        wch: Math.max(key.length + 3, 15)
-    }));
-
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Laporan Gangguan Mitra");
 
     const dateStr = selectedMonth === 'ALL' ? 'All_Time' : selectedMonth;
     XLSX.writeFile(workbook, `Report_Gangguan_ISP_Mitra_${dateStr}.xlsx`);
-
     closeExportModal();
 }
 
 function backupJSON() {
+    if (currentUser && currentUser.role !== 'Super Admin') {
+        alert('Akses Ditolak: Hanya Super Admin yang dapat mendownload backup JSON.');
+        return;
+    }
     if (incidents.length === 0) {
         alert('Tidak ada data untuk dibackup.');
         return;
@@ -568,14 +689,19 @@ function backupJSON() {
 }
 
 function restoreJSON(e) {
+    if (currentUser && currentUser.role !== 'Super Admin') {
+        alert('Akses Ditolak: Hanya Super Admin yang dapat melakukan Restore data.');
+        return;
+    }
     const fileReader = new FileReader();
     fileReader.onload = function(event) {
         try {
             const parsedData = JSON.parse(event.target.result);
             if (Array.isArray(parsedData)) {
                 incidents = parsedData;
+                saveToStorage();
                 renderApp();
-                alert('Data berhasil dibaca dari file JSON!');
+                alert('Data berhasil di-restore!');
             } else {
                 alert('Format file JSON tidak valid.');
             }
