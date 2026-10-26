@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="id" class="dark">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ISP Network Operations Center - Daily Report Gangguan Mitra</title>
+    <title>Mahawira Network Operations Center - Daily Incident Report</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
@@ -15,337 +15,412 @@
     <!-- Custom Stylesheet -->
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="min-h-screen flex flex-col bg-slate-900 text-slate-100">
+<body class="bg-slate-50 text-slate-800 min-h-screen">
 
-    <!-- TOP HEADER -->
-    <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-30 shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="bg-blue-600 p-2 rounded-lg text-white font-bold">
-                    <i class="fa-solid fa-network-wired me-1"></i> NOC
+    <!-- 1. HALAMAN LOGIN -->
+    <div id="loginScreen" class="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
+            <div class="text-center mb-6">
+                <div class="inline-flex bg-sky-600 text-white p-3 rounded-xl mb-3 shadow-md">
+                    <i class="fa-solid fa-network-wired text-2xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800">Mahawira Ticket System</h2>
+                <p class="text-xs text-slate-500 mt-1">Silakan masuk menggunakan akun NOC / Admin</p>
+            </div>
+
+            <div id="loginError" class="hidden mb-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-600 font-semibold text-center">
+                Username atau password salah!
+            </div>
+
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Username</label>
+                    <input type="text" id="loginUsername" required placeholder="Masukkan username" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800">
                 </div>
                 <div>
-                    <h1 class="font-bold text-lg leading-tight">ISP Ticket & Gangguan System</h1>
-                    <p class="text-xs text-slate-400">Monitoring & Daily Report Mitra Metro / Mikrotik</p>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Password</label>
+                    <input type="password" id="loginPassword" required placeholder="••••••••" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800">
                 </div>
-            </div>
-            <div class="flex items-center space-x-2">
-                <button onclick="openExportModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center shadow-md">
-                    <i class="fa-solid fa-file-excel mr-1.5"></i> Export Excel
+                <button type="submit" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow-md">
+                    Masuk ke Sistem
                 </button>
-                <button onclick="backupJSON()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center border border-slate-600">
-                    <i class="fa-solid fa-download mr-1.5"></i> Backup
-                </button>
-                <label class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center cursor-pointer border border-slate-600">
-                    <i class="fa-solid fa-upload mr-1.5"></i> Restore
-                    <input type="file" id="restoreFile" accept=".json" onchange="restoreJSON(event)" class="hidden">
-                </label>
-            </div>
-        </div>
-    </header>
-
-    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-
-        <!-- DASHBOARD STAT CARDS -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between shadow-md">
-                <div>
-                    <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Total Incident Hari Ini</p>
-                    <p id="statToday" class="text-2xl font-bold text-white mt-1">0</p>
-                    <span id="statTodayBadge" class="text-xs font-medium text-slate-400">0 Solved / 0 Open</span>
-                </div>
-                <div class="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400 text-2xl">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                </div>
-            </div>
-
-            <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between shadow-md">
-                <div>
-                    <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Gangguan Sisi Metro</p>
-                    <p id="statMetro" class="text-2xl font-bold text-red-400 mt-1">0</p>
-                    <span id="statMetroSub" class="text-xs text-slate-400">External Provider Link</span>
-                </div>
-                <div class="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-2xl">
-                    <i class="fa-solid fa-tower-cell"></i>
-                </div>
-            </div>
-
-            <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between shadow-md">
-                <div>
-                    <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Gangguan Mikrotik</p>
-                    <p id="statMikrotik" class="text-2xl font-bold text-amber-400 mt-1">0</p>
-                    <span id="statMikrotikSub" class="text-xs text-slate-400">Internal Hardware & Config</span>
-                </div>
-                <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-400 text-2xl">
-                    <i class="fa-solid fa-microchip"></i>
-                </div>
-            </div>
-
-            <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between shadow-md">
-                <div>
-                    <p class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Total Downtime (Bulan Ini)</p>
-                    <p id="statDowntime" class="text-2xl font-bold text-cyan-400 mt-1">0 Menit</p>
-                    <span id="statDowntimeHours" class="text-xs text-slate-400">~0 Jam Accumulated</span>
-                </div>
-                <div class="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded-lg text-cyan-400 text-2xl">
-                    <i class="fa-solid fa-clock-rotate-left"></i>
-                </div>
-            </div>
-        </div>
-
-        <!-- CHARTS SECTION -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-md flex flex-col justify-between">
-                <div>
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="font-bold text-slate-200 text-sm flex items-center">
-                            <i class="fa-solid fa-ranking-star text-amber-400 mr-2"></i> Top Mitra Sering Gangguan
-                        </h2>
-                        <span class="text-xs text-slate-400">Akumulasi All Time</span>
-                    </div>
-                    <div class="relative h-56">
-                        <canvas id="topMitraChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-md flex flex-col justify-between">
-                <div>
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="font-bold text-slate-200 text-sm flex items-center">
-                            <i class="fa-solid fa-chart-pie text-cyan-400 mr-2"></i> Sumber Gangguan Ratio
-                        </h2>
-                        <span class="text-xs text-slate-400">Metro vs Internal</span>
-                    </div>
-                    <div class="relative h-56 flex items-center justify-center">
-                        <canvas id="sourceRatioChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 shadow-md flex flex-col justify-between">
-                <div>
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="font-bold text-slate-200 text-sm flex items-center">
-                            <i class="fa-solid fa-chart-line text-emerald-400 mr-2"></i> Tren Gangguan Daily
-                        </h2>
-                        <span class="text-xs text-slate-400">30 Hari Terakhir</span>
-                    </div>
-                    <div class="relative h-56">
-                        <canvas id="dailyTrendChart"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- FORM INPUT GANGGUAN -->
-        <div class="bg-slate-800 border border-slate-700 rounded-xl shadow-md overflow-hidden">
-            <div class="bg-slate-800/80 px-6 py-4 border-b border-slate-700 flex justify-between items-center">
-                <h2 class="font-bold text-slate-200 text-base flex items-center">
-                    <i class="fa-solid fa-square-plus text-blue-500 mr-2"></i> Form Input Daily Report Gangguan
-                </h2>
-                <span class="text-xs bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full border border-blue-500/30">NOC Input Portal</span>
-            </div>
-
-            <form id="incidentForm" onsubmit="handleFormSubmit(event)" class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <input type="hidden" id="editIndex" value="-1">
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Tanggal Kejadian</label>
-                    <input type="date" id="inputTanggal" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Nama Mitra / Client</label>
-                    <input type="text" id="inputMitra" placeholder="Contoh: PT. Sumber Makmur" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">ID Pelanggan / IP Gateway</label>
-                    <input type="text" id="inputIdPelanggan" placeholder="e.g. MTR-0042 / 10.20.1.1" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Sumber Masalah</label>
-                    <select id="inputSumber" required onchange="updateSubCategoryOptions()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                        <option value="">-- Pilih Sumber --</option>
-                        <option value="Metro">Sisi Metro (External Provider)</option>
-                        <option value="Mikrotik">Sisi Internal / Mikrotik</option>
-                    </select>
-                </div>
-
-                <div class="hidden">
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Kategori Masalah Specific</label>
-                    <select id="inputKategori" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                        <option value="">-- Pilih Sumber Dahulu --</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Jam Kejadian (Start)</label>
-                    <input type="time" id="inputJamMulai" required onchange="calculateDowntime()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Tanggal Selesai (End)</label>
-                    <input type="date" id="inputTanggalSelesai" onchange="calculateDowntime()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Jam Solved (End)</label>
-                    <input type="time" id="inputJamSelesai" onchange="calculateDowntime()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Estimasi Downtime</label>
-                    <input type="text" id="inputDowntime" placeholder="Otomatis terisi..." readonly class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-emerald-400 font-bold focus:outline-none">
-                </div>
-
-                <div class="md:col-span-2">
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Keterangan / Troubleshooting Root Cause</label>
-                    <input type="text" id="inputKeterangan" placeholder="Catatan NOC, root cause, penggantian perangkat, atau FO cut detail..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Status Ticket</label>
-                    <select id="inputStatus" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
-                        <option value="Resolved">Resolved (Selesai)</option>
-                        <option value="Pending" selected>Pending (In Progress)</option>
-                    </select>
-                </div>
-
-                <div class="flex items-end space-x-2">
-                    <button type="submit" id="btnSubmit" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg text-sm transition shadow-md flex items-center justify-center">
-                        <i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report
-                    </button>
-                    <button type="button" id="btnCancelEdit" onclick="resetForm()" class="hidden bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 px-3 rounded-lg text-sm transition">
-                        Batal
-                    </button>
-                </div>
             </form>
         </div>
+    </div>
 
-        <!-- TABEL DATA & FILTER -->
-        <div class="bg-slate-800 border border-slate-700 rounded-xl shadow-md overflow-hidden">
-            <div class="p-4 bg-slate-800/90 border-b border-slate-700 flex flex-wrap gap-3 items-center justify-between">
-                <div class="flex items-center space-x-2 w-full md:w-auto">
-                    <i class="fa-solid fa-list-check text-slate-400"></i>
-                    <h3 class="font-bold text-slate-200 text-sm">Riwayat Daily Report Gangguan</h3>
-                </div>
-
-                <div class="flex flex-wrap gap-2 w-full md:w-auto">
-                    <input type="text" id="filterSearch" oninput="renderApp()" placeholder="Cari Mitra / ID / Detail..." class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-3 py-1.5 w-full md:w-48">
-                    <input type="month" id="filterMonth" onchange="renderApp()" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-2 py-1.5">
-                    <select id="filterSumber" onchange="renderApp()" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-2 py-1.5">
-                        <option value="All">Semua Sumber</option>
-                        <option value="Metro">Sisi Metro</option>
-                        <option value="Mikrotik">Sisi Mikrotik</option>
-                    </select>
-                    <select id="filterStatus" onchange="renderApp()" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg px-2 py-1.5">
-                        <option value="All">Semua Status</option>
-                        <option value="Pending">Pending (Open)</option>
-                        <option value="Resolved">Resolved</option>
-                    </select>
-                    <button onclick="clearFilter()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-1.5 rounded-lg text-xs" title="Reset Filter">
-                        <i class="fa-solid fa-rotate-left"></i>
+    <!-- 2. LAYAR UTAMA APLIKASI (SIDEBAR + MAIN CONTENT) -->
+    <div id="appScreen" class="hidden min-h-screen flex flex-col md:flex-row">
+        
+        <!-- SIDEBAR -->
+        <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between fixed inset-y-0 left-0 z-40 h-screen transition-transform duration-300 transform -translate-x-full md:translate-x-0 shadow-sm overflow-y-auto">
+            <div>
+                <!-- Brand Header -->
+                <div class="h-16 flex items-center justify-between px-6 border-b border-slate-100 bg-white sticky top-0 z-10">
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-sky-600 p-2 rounded-lg text-white font-bold text-sm shadow-sm">
+                            <i class="fa-solid fa-network-wired"></i>
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-sm leading-tight text-slate-800">NOC Incident</h1>
+                            <p class="text-[10px] text-slate-400">Portal Reporting Mitra</p>
+                        </div>
+                    </div>
+                    <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
                     </button>
                 </div>
-            </div>
 
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs border-collapse">
-                    <thead class="bg-slate-900/60 text-slate-400 border-b border-slate-700 uppercase font-semibold">
-                        <tr>
-                            <th class="p-3">Tanggal</th>
-                            <th class="p-3">Mitra & ID</th>
-                            <th class="p-3">Sumber Masalah</th>
-                            <th class="p-3">Detail Kategori</th>
-                            <th class="p-3">Jam (Start - End)</th>
-                            <th class="p-3">Downtime</th>
-                            <th class="p-3">Status</th>
-                            <th class="p-3 text-center">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody id="incidentTableBody" class="divide-y divide-slate-700/50"></tbody>
-                </table>
-            </div>
-
-            <div class="p-4 bg-slate-900/40 border-t border-slate-700 flex flex-col md:flex-row items-center justify-between text-xs text-slate-400 gap-3">
-                <div id="tableInfo">Menampilkan 0 data</div>
-                <div class="flex items-center space-x-2">
-                    <button id="btnPrevPage" onclick="changePage(-1)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-200 disabled:opacity-50">Prev</button>
-                    <span id="pageIndicator" class="px-2">Page 1 of 1</span>
-                    <button id="btnNextPage" onclick="changePage(1)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-200 disabled:opacity-50">Next</button>
+                <!-- Navigation Menu -->
+                <div class="p-4 space-y-6">
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">MENU UTAMA</p>
+                        <nav class="space-y-1">
+                            <a href="#dashboardSection" class="flex items-center px-3 py-2 text-xs font-medium text-sky-700 bg-sky-50 rounded-lg">
+                                <i class="fa-solid fa-chart-line w-5"></i> Dashboard
+                            </a>
+                            <a href="#formSection" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
+                                <i class="fa-solid fa-circle-plus w-5 text-sky-600"></i> Input Report
+                            </a>
+                            <a href="#tableSection" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
+                                <i class="fa-solid fa-list-check w-5 text-amber-600"></i> Incident List
+                            </a>
+                            <a href="#analyticsSection" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
+                                <i class="fa-solid fa-chart-pie w-5 text-purple-600"></i> Analytics
+                            </a>
+                            <button onclick="openExportModal()" class="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition text-left">
+                                <i class="fa-solid fa-database w-5 text-emerald-600"></i> Data Tools
+                            </button>
+                        </nav>
+                    </div>
                 </div>
             </div>
+
+            <!-- Profile Area -->
+            <div class="p-4 border-t border-slate-100 bg-slate-50/80">
+                <div class="flex items-center space-x-3 mb-3">
+                    <img id="navUserAvatar" src="" alt="Avatar" class="w-9 h-9 rounded-full object-cover border border-slate-200">
+                    <div class="flex-1 min-w-0">
+                        <p id="navUserName" class="text-xs font-bold text-slate-700 truncate"></p>
+                        <p id="navUserRole" class="text-[10px] text-sky-600 font-medium truncate"></p>
+                    </div>
+                </div>
+
+                <button onclick="handleLogout()" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold py-2 px-3 rounded-lg transition flex items-center justify-center">
+                    <i class="fa-solid fa-right-from-bracket mr-1.5"></i> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <div class="flex-1 flex flex-col min-w-0 md:ml-64">
+            <!-- HEADER UTAMA -->
+            <header class="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 md:px-8 sticky top-0 z-30 shadow-sm">
+                <div class="flex items-center space-x-3">
+                    <button onclick="toggleSidebar()" class="md:hidden text-slate-600 p-2">
+                        <i class="fa-solid fa-bars text-lg"></i>
+                    </button>
+                    <h2 class="font-bold text-slate-800 text-base">Monitoring & Daily Report Gangguan Mitra</h2>
+                </div>
+                
+                <!-- KUMPULAN TOMBOL HEADER: HANYA SUPER ADMIN YANG MELIHAT TOMBOL BACKUP & RESTORE -->
+                <div class="flex items-center space-x-2">
+                    <button id="btnHeaderBackup" onclick="backupJSON()" title="Download Backup Data (.json)" class="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition hidden items-center">
+                        <i class="fa-solid fa-download mr-1.5"></i> Backup JSON
+                    </button>
+
+                    <label id="btnHeaderRestore" title="Restore Data dari File (.json)" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition hidden items-center cursor-pointer">
+                        <i class="fa-solid fa-upload mr-1.5"></i> Restore JSON
+                        <input type="file" id="restoreFileHeader" accept=".json" onchange="restoreJSON(event)" class="hidden">
+                    </label>
+
+                    <button onclick="openExportModal()" title="Export Laporan ke Excel" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm transition flex items-center">
+                        <i class="fa-solid fa-file-excel mr-1.5"></i> Export Excel
+                    </button>
+                </div>
+            </header>
+
+            <main class="flex-grow p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
+                
+                <!-- STATS CARDS -->
+                <div id="dashboardSection" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Incident Hari Ini</p>
+                            <p id="statToday" class="text-2xl font-bold text-slate-800 mt-1">0</p>
+                            <span id="statTodayBadge" class="text-xs font-medium text-slate-500">0 Solved / 0 Open</span>
+                        </div>
+                        <div class="p-3 bg-sky-50 border border-sky-100 rounded-xl text-sky-600 text-2xl">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Gangguan Metro</p>
+                            <p id="statMetro" class="text-2xl font-bold text-rose-600 mt-1">0</p>
+                            <span class="text-xs text-slate-400">External Provider Link</span>
+                        </div>
+                        <div class="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-2xl">
+                            <i class="fa-solid fa-tower-cell"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Gangguan Mikrotik</p>
+                            <p id="statMikrotik" class="text-2xl font-bold text-amber-600 mt-1">0</p>
+                            <span class="text-xs text-slate-400">Internal Hardware & Config</span>
+                        </div>
+                        <div class="p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-600 text-2xl">
+                            <i class="fa-solid fa-microchip"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                        <div>
+                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Total Downtime</p>
+                            <p id="statDowntime" class="text-2xl font-bold text-cyan-600 mt-1">0 Menit</p>
+                            <span id="statDowntimeHours" class="text-xs text-slate-400">~0 Jam Accumulated</span>
+                        </div>
+                        <div class="p-3 bg-cyan-50 border border-cyan-100 rounded-xl text-cyan-600 text-2xl">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CHARTS -->
+                <div id="analyticsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                        <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
+                            <i class="fa-solid fa-ranking-star text-amber-500 mr-2"></i> Top Mitra Gangguan
+                        </h3>
+                        <div class="relative h-56">
+                            <canvas id="topMitraChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                        <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
+                            <i class="fa-solid fa-chart-pie text-sky-500 mr-2"></i> Rasio Sumber Masalah
+                        </h3>
+                        <div class="relative h-56">
+                            <canvas id="sourceRatioChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                        <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
+                            <i class="fa-solid fa-chart-line text-emerald-500 mr-2"></i> Tren Gangguan Daily
+                        </h3>
+                        <div class="relative h-56">
+                            <canvas id="dailyTrendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FORM INPUT -->
+                <div id="formSection" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                        <h3 class="font-bold text-slate-700 text-sm flex items-center">
+                            <i class="fa-solid fa-square-plus text-sky-600 mr-2"></i> Form Input Daily Report Gangguan
+                        </h3>
+                        <span class="text-xs bg-sky-50 text-sky-700 font-medium px-2.5 py-1 rounded-full border border-sky-200">NOC Input Portal</span>
+                    </div>
+
+                    <form id="incidentForm" onsubmit="handleFormSubmit(event)" class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <input type="hidden" id="editIndex" value="-1">
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Kejadian</label>
+                            <input type="date" id="inputTanggal" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Mitra / Client</label>
+                            <input type="text" id="inputMitra" placeholder="Contoh: PT. Sumber Makmur" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">ID Pelanggan / IP Gateway</label>
+                            <input type="text" id="inputIdPelanggan" placeholder="e.g. MTR-0042 / 10.20.1.1" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Sumber Masalah</label>
+                            <select id="inputSumber" required onchange="updateSubCategoryOptions()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                                <option value="">-- Pilih Sumber --</option>
+                                <option value="Metro">Sisi Metro (External Provider)</option>
+                                <option value="Mikrotik">Sisi Internal / Mikrotik</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Kategori Masalah Specific</label>
+                            <select id="inputKategori" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                                <option value="">-- Pilih Sumber Dahulu --</option>
+                            </select>
+                        </div>
+
+                        <!-- INPUT JAM KEJADIAN (FORMAT TEKS 24 JAM: HH:MM, TANPA AM/PM) -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Jam Kejadian (Start)</label>
+                            <input type="text" id="inputJamMulai" placeholder="Contoh: 14:30" maxlength="5" required onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Selesai (End)</label>
+                            <input type="date" id="inputTanggalSelesai" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                        </div>
+
+                        <!-- INPUT JAM SOLVED (FORMAT TEKS 24 JAM: HH:MM, TANPA AM/PM) -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Jam Solved (End)</label>
+                            <input type="text" id="inputJamSelesai" placeholder="Contoh: 16:45" maxlength="5" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Estimasi Downtime</label>
+                            <input type="text" id="inputDowntime" placeholder="Otomatis terisi..." readonly class="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-emerald-600 font-bold focus:outline-none">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Status Ticket</label>
+                            <select id="inputStatus" required onchange="handleStatusChange()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                                <option value="Pending" selected>Pending (In Progress)</option>
+                                <option value="Resolved">Resolved (Selesai)</option>
+                            </select>
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Keterangan / Root Cause Troubleshooting</label>
+                            <input type="text" id="inputKeterangan" placeholder="Catatan NOC, root cause, penggantian perangkat..." class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                        </div>
+
+                        <div class="md:col-span-4 flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                            <button type="button" id="btnCancelEdit" onclick="resetForm()" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-2 px-4 rounded-lg text-sm transition">
+                                Batal
+                            </button>
+                            <button type="submit" id="btnSubmit" class="bg-sky-600 hover:bg-sky-500 text-white font-semibold py-2 px-6 rounded-lg text-sm transition shadow-md flex items-center">
+                                <i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- TABEL DATA & FILTER -->
+                <div id="tableSection" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-3 items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-solid fa-list-check text-slate-400"></i>
+                            <h3 class="font-bold text-slate-700 text-sm">Riwayat Daily Report Gangguan</h3>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                            <input type="text" id="filterSearch" oninput="renderApp()" placeholder="Cari Mitra / ID / Detail..." class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-3 py-1.5 w-full md:w-48">
+                            <input type="month" id="filterMonth" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
+                            <select id="filterSumber" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
+                                <option value="All">Semua Sumber</option>
+                                <option value="Metro">Sisi Metro</option>
+                                <option value="Mikrotik">Sisi Mikrotik</option>
+                            </select>
+                            <select id="filterStatus" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
+                                <option value="All">Semua Status</option>
+                                <option value="Pending">Pending (Open)</option>
+                                <option value="Resolved">Resolved</option>
+                            </select>
+                            <button onclick="clearFilter()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-1.5 rounded-lg text-xs" title="Reset Filter">
+                                <i class="fa-solid fa-rotate-left"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead class="bg-slate-50 text-slate-500 border-b border-slate-200 uppercase font-semibold">
+                                <tr>
+                                    <th class="p-3">Tanggal & Jam</th>
+                                    <th class="p-3">Mitra & ID</th>
+                                    <th class="p-3">Sumber Masalah</th>
+                                    <th class="p-3">Detail Kategori</th>
+                                    <th class="p-3">Downtime</th>
+                                    <th class="p-3">Status</th>
+                                    <th class="p-3 text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="incidentTableBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between text-xs text-slate-500 gap-3">
+                        <div id="tableInfo">Menampilkan 0 data</div>
+                        <div class="flex items-center space-x-2">
+                            <button id="btnPrevPage" onclick="changePage(-1)" class="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-50">Prev</button>
+                            <span id="pageIndicator" class="px-2 font-medium">Page 1 of 1</span>
+                            <button id="btnNextPage" onclick="changePage(1)" class="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-50">Next</button>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+
+            <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
+                Mahawira Network Operations Center System &copy; 2026 - Executive White Theme Edition
+            </footer>
         </div>
-
-    </main>
-
-    <footer class="bg-slate-900 border-t border-slate-800 py-4 text-center text-xs text-slate-500">
-        ISP Network Operations Center Daily System &copy; 2026 - Powered by Supabase Cloud Storage
-    </footer>
+    </div>
 
     <!-- DETAIL MODAL -->
-    <div id="detailModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div class="px-5 py-4 bg-slate-900/80 border-b border-slate-700 flex justify-between items-center">
-                <h3 class="font-bold text-slate-100 flex items-center">
-                    <i class="fa-solid fa-circle-info text-blue-400 mr-2"></i> Detail Laporan Incidents
+    <div id="detailModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
+            <div class="px-5 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center">
+                    <i class="fa-solid fa-circle-info text-sky-600 mr-2"></i> Detail Laporan Incident
                 </h3>
-                <button onclick="closeModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="p-5 space-y-3 text-sm" id="modalBody"></div>
-            <div class="px-5 py-3 bg-slate-900/40 border-t border-slate-700 text-right">
-                <button onclick="closeModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-4 py-2 rounded-lg font-semibold">Tutup</button>
+            <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 text-right">
+                <button onclick="closeModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-4 py-2 rounded-lg font-semibold">Tutup</button>
             </div>
         </div>
     </div>
 
     <!-- EXPORT EXCEL MODAL -->
-    <div id="exportModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
-        <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div class="px-5 py-4 bg-slate-900/80 border-b border-slate-700 flex justify-between items-center">
-                <h3 class="font-bold text-slate-100 flex items-center">
-                    <i class="fa-solid fa-file-excel text-emerald-500 mr-2"></i> Pilih Periode Export Excel
+    <div id="exportModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white border border-slate-200 rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div class="px-5 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 flex items-center">
+                    <i class="fa-solid fa-file-excel text-emerald-600 mr-2"></i> Pilih Periode Export Excel
                 </h3>
-                <button onclick="closeExportModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <button onclick="closeExportModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="p-5 space-y-4">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Filter Bulan Laporan</label>
-                    <select id="exportMonthSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Filter Bulan Laporan</label>
+                    <select id="exportMonthSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                         <option value="ALL">Semua Bulan (All Time)</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Filter Status Ticket</label>
-                    <select id="exportStatusSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Filter Status Ticket</label>
+                    <select id="exportStatusSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                         <option value="ALL">Semua Status (Pending & Resolved)</option>
                         <option value="Pending">Hanya Ticket Pending / Open</option>
                         <option value="Resolved">Hanya Ticket Resolved</option>
                     </select>
                 </div>
             </div>
-            <div class="px-5 py-3 bg-slate-900/40 border-t border-slate-700 flex justify-end space-x-2">
-                <button onclick="closeExportModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs px-4 py-2 rounded-lg font-semibold">Batal</button>
-                <button onclick="confirmExportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-lg font-semibold flex items-center">
+            <div class="px-5 py-3 bg-slate-50 border-t border-slate-200 flex justify-end space-x-2">
+                <button onclick="closeExportModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-4 py-2 rounded-lg font-semibold">Batal</button>
+                <button onclick="confirmExportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-4 py-2 rounded-lg font-semibold flex items-center shadow-md">
                     <i class="fa-solid fa-download mr-1.5"></i> Download Excel
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- ========================================================= -->
-    <!-- PERBAIKAN URUTAN PEMANGGILAN SCRIPT (PENTING)               -->
-    <!-- ========================================================= -->
-    <!-- 1. Pustaka Supabase JS CDN dipanggil PERTAMA -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-    <!-- 2. Configuration & Inisialisasi Klien Supabase -->
+    <!-- Scripts Integration -->
     <script src="config.js"></script>
-
-    <!-- 3. Application Logic Utama -->
     <script src="script.js"></script>
 </body>
 </html>
