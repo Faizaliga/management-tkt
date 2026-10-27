@@ -258,19 +258,13 @@ async function handleFormSubmit(e) {
     };
 
     if (editIndex >= 0) {
-        if (currentUser && currentUser.role !== 'Super Admin') {
-            alert('Akses Ditolak: Hanya Super Admin yang dapat mengubah data!');
-            return;
-        }
-        
         const existingId = incidents[editIndex].id;
         supabasePayload.id = existingId; 
         
         await saveToStorage('UPDATE', supabasePayload);
         
         incidents[editIndex] = {
-            ...incidents[editIndex],
-            tanggal: supabasePayload.tanggal_kejadian,
+            ...incidents[editIndex],        tanggal: supabasePayload.tanggal_kejadian,
             tanggalSelesai: supabasePayload.tanggal_solved,
             mitra: supabasePayload.nama_mitra,
             idPelanggan: supabasePayload.id_pelanggan,
@@ -328,8 +322,6 @@ function resetForm() {
 }
 
 function editRecord(id) {
-    
-
     const index = incidents.findIndex(item => item.id === id);
     if (index === -1) return;
 
