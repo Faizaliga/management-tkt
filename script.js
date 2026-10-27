@@ -56,7 +56,7 @@ function showLogin() {
 }
 
 async function showApp() {
-        await loadOperators(); 
+    await loadOperators(); 
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('appScreen').classList.remove('hidden');
 
@@ -87,6 +87,24 @@ function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('-translate-x-full');
 }
 
+// ==========================================
+// MODAL CONTROLLER (TAMBAHAN REVISI)
+// ==========================================
+function openIncidentModal(isEdit = false) {
+    const modal = document.getElementById('incidentModal');
+    const titleText = document.getElementById('modalTitleText');
+    if (modal) {
+        modal.classList.remove('hidden');
+        if (titleText) titleText.textContent = isEdit ? "Edit Daily Report Gangguan" : "Form Input Daily Report Gangguan";
+    }
+}
+
+function closeIncidentModal() {
+    const modal = document.getElementById('incidentModal');
+    if (modal) modal.classList.add('hidden');
+    resetForm();
+}
+
 async function loadFromStorage() {
     try {
         const { data, error } = await supabaseClient
@@ -111,7 +129,7 @@ async function loadFromStorage() {
             downtimeText: item.downtime_formatted,
             keterangan: item.keterangan,
             status: item.status_ticket,
-            createdBy: item.created_by || 'System' // Mapping operator
+            createdBy: item.created_by || 'System'
         }));
         localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
     } catch (err) {
@@ -264,7 +282,8 @@ async function handleFormSubmit(e) {
         await saveToStorage('UPDATE', supabasePayload);
         
         incidents[editIndex] = {
-            ...incidents[editIndex],        tanggal: supabasePayload.tanggal_kejadian,
+            ...incidents[editIndex],        
+            tanggal: supabasePayload.tanggal_kejadian,
             tanggalSelesai: supabasePayload.tanggal_solved,
             mitra: supabasePayload.nama_mitra,
             idPelanggan: supabasePayload.id_pelanggan,
@@ -301,7 +320,7 @@ async function handleFormSubmit(e) {
         });
     }
 
-    resetForm();
+    closeIncidentModal(); // Tutup modal otomatis setelah berhasil simpan
     renderApp();
 }
 
@@ -310,7 +329,6 @@ function resetForm() {
     if (form) form.reset();
     document.getElementById('editIndex').value = -1;
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report';
-    document.getElementById('btnCancelEdit').classList.add('hidden');
     
     document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
     document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
@@ -346,13 +364,11 @@ function editRecord(id) {
     }
 
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i> Update Report';
-    document.getElementById('btnCancelEdit').classList.remove('hidden');
 
-    window.scrollTo({ top: document.getElementById('incidentForm').offsetTop - 80, behavior: 'smooth' });
+    openIncidentModal(true); // Buka modal otomatis dalam mode edit
 }
 
 async function deleteRecord(id) {
-   
     if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini?')) {
         await saveToStorage('DELETE', id);
         incidents = incidents.filter(item => item.id !== id);
@@ -462,8 +478,6 @@ function renderApp() {
     const tbody = document.getElementById('incidentTableBody');
     tbody.innerHTML = '';
 
-    const isSuperAdmin = currentUser && currentUser.role === 'Super Admin';
-
     if (pageData.length === 0) {
         tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">Tidak ada data gangguan ditemukan</td></tr>`;
     } else {
@@ -503,7 +517,7 @@ function renderApp() {
                 <td class="p-3 text-center">
                     <div class="flex items-center justify-center space-x-1.5">
                         <button onclick="showDetail(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-sky-600 transition" title="Detail"><i class="fa-solid fa-eye"></i></button>
-                                                <button onclick="editRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-amber-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="editRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-amber-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
                         <button onclick="deleteRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-rose-100 rounded text-rose-600 transition" title="Hapus"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </td>
@@ -633,7 +647,7 @@ function confirmExportToExcel() {
         'Durasi Downtime': item.downtimeText || item.downtime_formatted || '-',
         'Catatan / Root Cause': item.keterangan,
         'Status Ticket': item.status,
-        'Operator NOC': item.createdBy || 'System' // Mengambil dari nama operator
+        'Operator NOC': item.createdBy || 'System'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelRows);
@@ -673,7 +687,7 @@ async function restoreJSON(e) {
         try {
             const parsedData = JSON.parse(event.target.result);
             if (Array.isArray(parsedData)) {
-                                const payload = parsedData.map(item => ({
+                const payload = parsedData.map(item => ({
                     id: item.id || Date.now() + Math.floor(Math.random() * 1000),
                     tanggal_kejadian: item.tanggal || item.tanggal_kejadian,
                     tanggal_solved: item.tanggalSelesai || item.tanggal_solved || null,
@@ -690,7 +704,6 @@ async function restoreJSON(e) {
                     created_by: item.createdBy || item.created_by || 'System'
                 }));
 
-                // Insert ke Supabase secara bulk
                 const { data, error } = await supabaseClient
                     .from('tickets')
                     .upsert(payload, { onConflict: 'id' });
@@ -698,7 +711,7 @@ async function restoreJSON(e) {
                 if (error) throw error;
 
                 alert('Data berhasil di-restore ke Supabase!');
-                await loadFromStorage(); // Reload data dari Supabase
+                await loadFromStorage(); 
                 renderApp();
             } else {
                 alert('Format file JSON tidak valid.');
@@ -710,7 +723,6 @@ async function restoreJSON(e) {
     if (e.target.files[0]) {
         fileReader.readAsText(e.target.files[0]);
     }
-    
 }
 
 async function loadOperators() {
@@ -742,4 +754,3 @@ async function loadOperators() {
         console.error('Gagal memuat data operator:', err.message);
     }
 }
-                    
