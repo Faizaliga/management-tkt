@@ -129,7 +129,7 @@ async function loadFromStorage() {
             downtimeText: item.downtime_formatted,
             keterangan: item.keterangan,
             status: item.status_ticket,
-            createdBy: item.created_by || 'System'
+            createdBy: item.created_by || 'SYSTEM'
         }));
         localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
     } catch (err) {
@@ -259,20 +259,21 @@ async function handleFormSubmit(e) {
         downtimeMenitInt = (days * 24 * 60) + (hours * 60) + mins;
     }
 
+    // KONVERSI SEMUA INPUT TEKS MENJADI KAPITAL (UPPERCASE)
     const supabasePayload = {
         tanggal_kejadian: document.getElementById('inputTanggal').value,
         tanggal_solved: tanggalSelesaiValue || null,
-        nama_mitra: document.getElementById('inputMitra').value.trim(),
-        id_pelanggan: document.getElementById('inputIdPelanggan').value.trim(),
+        nama_mitra: document.getElementById('inputMitra').value.trim().toUpperCase(),
+        id_pelanggan: document.getElementById('inputIdPelanggan').value.trim().toUpperCase(),
         sumber_masalah: sumberValue,
-        detail_kategori: kategoriValue,
+        detail_kategori: kategoriValue ? kategoriValue.toUpperCase() : '',
         jam_kejadian: document.getElementById('inputJamMulai').value || null,
         jam_solved: jamSelesaiValue || null,
         downtime_menit: downtimeMenitInt,
         downtime_formatted: downtimeText,
-        keterangan: document.getElementById('inputKeterangan').value.trim(),
+        keterangan: document.getElementById('inputKeterangan').value.trim().toUpperCase(),
         status_ticket: statusValue,
-        created_by: document.getElementById('inputOperator') ? document.getElementById('inputOperator').value : 'System'
+        created_by: document.getElementById('inputOperator') ? document.getElementById('inputOperator').value.toUpperCase() : 'SYSTEM'
     };
 
     if (editIndex >= 0) {
@@ -320,7 +321,7 @@ async function handleFormSubmit(e) {
         });
     }
 
-    closeIncidentModal(); // Tutup modal otomatis setelah berhasil simpan
+    closeIncidentModal(); 
     renderApp();
 }
 
@@ -365,7 +366,7 @@ function editRecord(id) {
 
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i> Update Report';
 
-    openIncidentModal(true); // Buka modal otomatis dalam mode edit
+    openIncidentModal(true); 
 }
 
 async function deleteRecord(id) {
@@ -400,10 +401,10 @@ function showDetail(id) {
         </div>
         <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
             <span class="text-xs text-slate-400 block mb-1">Catatan Troubleshooting / Root Cause</span>
-            <p class="text-xs text-slate-600 italic">${item.keterangan || 'Tidak ada catatan tambahan.'}</p>
+            <p class="text-xs text-slate-600 italic">${item.keterangan || 'TIDAK ADA CATATAN TAMBAHAN.'}</p>
         </div>
         <div class="text-[11px] text-slate-400 pt-1">
-            Input / Updated by: <span class="font-medium text-slate-600">${item.createdBy || 'System'}</span>
+            Input / Updated by: <span class="font-medium text-slate-600">${item.createdBy || 'SYSTEM'}</span>
         </div>
     `;
     document.getElementById('detailModal').classList.remove('hidden');
@@ -647,7 +648,7 @@ function confirmExportToExcel() {
         'Durasi Downtime': item.downtimeText || item.downtime_formatted || '-',
         'Catatan / Root Cause': item.keterangan,
         'Status Ticket': item.status,
-        'Operator NOC': item.createdBy || 'System'
+        'Operator NOC': item.createdBy || 'SYSTEM'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelRows);
@@ -691,17 +692,17 @@ async function restoreJSON(e) {
                     id: item.id || Date.now() + Math.floor(Math.random() * 1000),
                     tanggal_kejadian: item.tanggal || item.tanggal_kejadian,
                     tanggal_solved: item.tanggalSelesai || item.tanggal_solved || null,
-                    nama_mitra: item.mitra || item.nama_mitra,
-                    id_pelanggan: item.idPelanggan || item.id_pelanggan,
+                    nama_mitra: (item.mitra || item.nama_mitra || '').toUpperCase(),
+                    id_pelanggan: (item.idPelanggan || item.id_pelanggan || '').toUpperCase(),
                     sumber_masalah: item.sumber || item.sumber_masalah,
-                    detail_kategori: item.kategori || item.detail_kategori,
+                    detail_kategori: (item.kategori || item.detail_kategori || '').toUpperCase(),
                     jam_kejadian: item.jamMulai || item.jam_kejadian || null,
                     jam_solved: item.jamSelesai || item.jam_solved || null,
                     downtime_menit: 0, 
                     downtime_formatted: item.downtimeText || item.downtime_formatted || '',
-                    keterangan: item.keterangan,
+                    keterangan: (item.keterangan || '').toUpperCase(),
                     status_ticket: item.status || item.status_ticket,
-                    created_by: item.createdBy || item.created_by || 'System'
+                    created_by: (item.createdBy || item.created_by || 'SYSTEM').toUpperCase()
                 }));
 
                 const { data, error } = await supabaseClient
@@ -743,8 +744,8 @@ async function loadOperators() {
         
         data.forEach(op => {
             const option = document.createElement('option');
-            option.value = op.name;
-            option.textContent = op.name;
+            option.value = op.name.toUpperCase();
+            option.textContent = op.name.toUpperCase();
             select.appendChild(option);
         });
 
