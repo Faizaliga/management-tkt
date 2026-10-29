@@ -18,6 +18,7 @@ const SUB_CATEGORIES = {
     "Metro": [
         "High Latency / Packet Loss",
         "Link Down / Fiber Cut",
+        "Link Intermitten",
         "BGP Peer Disconnected",
         "Power Failure at Pop Upstream",
         "Maintenance Provider"
