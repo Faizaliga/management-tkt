@@ -2,6 +2,7 @@
 // CONFIG & INITIAL STATE
 // ==========================================
 let incidents = [];
+let coverageRequests = [];
 let currentPage = 1;
 
 let topMitraChartInstance = null;
@@ -45,6 +46,7 @@ function handleLogin(e) {
 }
 
 function handleLogout() {
+    stopSheetsSync();
     currentUser = null;
     localStorage.removeItem('isp_current_user');
     showLogin();
@@ -64,12 +66,17 @@ async function showApp() {
     if(tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat data dari server...</td></tr>`;
 
     await loadFromStorage();
+    await loadCoverageFromStorage();
     
+    // AKTIFKAN REALTIME LISTENER SUPABASE UNTUK COVERAGE
+    initCoverageRealtime();
+    startSheetsSync();
     if (document.getElementById('inputTanggal')) document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
     if (document.getElementById('inputTanggalSelesai')) document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
 
     updateUserUI();
     renderApp();
+    renderCoverageTable();
 }
 
 function updateUserUI() {
@@ -87,8 +94,30 @@ function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('-translate-x-full');
 }
 
+function switchNav(viewType) {
+    const mainView = document.getElementById('mainDashboardView');
+    const coverageView = document.getElementById('coverageView');
+    const headerTitle = document.getElementById('headerTitle');
+    const linkDashboard = document.getElementById('navLinkDashboard');
+    const linkCoverage = document.getElementById('navLinkCoverage');
+
+    if (viewType === 'coverage') {
+        mainView.classList.add('hidden');
+        coverageView.classList.remove('hidden');
+        headerTitle.innerText = "Manajemen Cek Coverage Metro ISP";
+        linkCoverage.className = "flex items-center px-3 py-2 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-lg";
+        linkDashboard.className = "flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition";
+    } else {
+        mainView.classList.remove('hidden');
+        coverageView.classList.add('hidden');
+        headerTitle.innerText = "Monitoring & Daily Report Gangguan Mitra";
+        linkDashboard.className = "flex items-center px-3 py-2 text-xs font-medium text-sky-700 bg-sky-50 rounded-lg";
+        linkCoverage.className = "flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition";
+    }
+}
+
 // ==========================================
-// MODAL CONTROLLER (TAMBAHAN REVISI)
+// MODAL CONTROLLER
 // ==========================================
 function openIncidentModal(isEdit = false) {
     const modal = document.getElementById('incidentModal');
@@ -103,6 +132,18 @@ function closeIncidentModal() {
     const modal = document.getElementById('incidentModal');
     if (modal) modal.classList.add('hidden');
     resetForm();
+}
+
+function openCoverageModal() {
+    const modal = document.getElementById('coverageModal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeCoverageModal() {
+    const modal = document.getElementById('coverageModal');
+    if (modal) modal.classList.add('hidden');
+    document.getElementById('coverageForm').reset();
+    document.getElementById('editCoverageId').value = '';
 }
 
 async function loadFromStorage() {
@@ -141,8 +182,61 @@ async function loadFromStorage() {
                 if (!Array.isArray(incidents)) incidents = [];
             } catch (e) { incidents = []; }
         } else {
-            incidents = JSON.parse(JSON.stringify(INITIAL_SAMPLE_DATA || []));
+            incidents = [];
         }
+    }
+}
+
+async function loadCoverageFromStorage() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('coverage_requests')
+            .select('*')
+            .order('id', { ascending: false });
+
+        if (error) throw error;
+
+        coverageRequests = (data || []).map(item => ({
+            id: item.id,
+            tanggal_request: item.tanggal_request || '-',
+            nama_mitra: item.nama_mitra || '',
+            tikor_mitra: item.tikor_mitra || '',
+            kapasitas_bandwidth: item.kapasitas_bandwidth || '',
+            vendors: item.vendors || [],
+            status_req: item.status_req || 'Menunggu Cek',
+            tikor_bts_pop: item.tikor_bts_pop || '-',
+            jarak_tikor: item.jarak_tikor || '-'
+        }));
+        
+        localStorage.setItem('mahawira_coverage_requests', JSON.stringify(coverageRequests));
+    } catch (err) {
+        console.error('Gagal load coverage dari Supabase:', err.message);
+        const stored = localStorage.getItem('mahawira_coverage_requests');
+        if (stored) {
+            try {
+                coverageRequests = JSON.parse(stored);
+                if (!Array.isArray(coverageRequests)) coverageRequests = [];
+            } catch (e) { coverageRequests = []; }
+        } else {
+            coverageRequests = [];
+        }
+    }
+}
+
+// SETUP REALTIME SUPABASE UNTUK COVERAGE
+function initCoverageRealtime() {
+    try {
+        supabaseClient
+            .channel('public:coverage_requests')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'coverage_requests' }, payload => {
+                console.log('Realtime change detected:', payload);
+                loadCoverageFromStorage().then(() => {
+                    renderCoverageTable();
+                });
+            })
+            .subscribe();
+    } catch (e) {
+        console.error('Realtime subscription error:', e);
     }
 }
 
@@ -158,7 +252,6 @@ async function saveToStorage(action, payload) {
         }
     } catch (err) {
         console.error('Gagal sinkronisasi ke Supabase:', err.message);
-        alert('Peringatan: Gagal sinkron ke server. Error: ' + err.message);
     }
 }
 
@@ -259,7 +352,6 @@ async function handleFormSubmit(e) {
         downtimeMenitInt = (days * 24 * 60) + (hours * 60) + mins;
     }
 
-    // KONVERSI SEMUA INPUT TEKS MENJADI KAPITAL (UPPERCASE)
     const supabasePayload = {
         tanggal_kejadian: document.getElementById('inputTanggal').value,
         tanggal_solved: tanggalSelesaiValue || null,
@@ -753,5 +845,360 @@ async function loadOperators() {
 
     } catch (err) {
         console.error('Gagal memuat data operator:', err.message);
+    }
+}
+
+// ==========================================
+// MODUL TAMBAHAN: MANAJEMEN CEK COVERAGE METRO (7 VENDOR)
+// ==========================================
+
+const ISP_VENDORS = [
+    "Telkom",
+    "XL",
+    "Indosat",
+    "Fiber Star",
+    "HSP",
+    "Lintasarta",
+    "iForte"
+];
+
+function openCoverageModal() {
+    const form = document.getElementById("coverageForm");
+    if (form) form.reset();
+    const editId = document.getElementById("editCoverageId");
+    if (editId) editId.value = "";
+    
+    const modal = document.getElementById("coverageModal");
+    if (modal) modal.classList.remove("hidden");
+}
+
+function closeCoverageModal() {
+    const modal = document.getElementById("coverageModal");
+    if (modal) modal.classList.add("hidden");
+}
+
+async function handleCoverageSubmit(event) {
+    event.preventDefault();
+
+    const editId = document.getElementById("editCoverageId")?.value;
+    const namaMitra = document.getElementById("covMitra")?.value.trim().toUpperCase() || "";
+    const kapasitas = document.getElementById("covKapasitas")?.value.trim().toUpperCase() || "";
+    const tikorMitra = document.getElementById("covTikor")?.value.trim().replace(/\s+/g, '') || "";
+    const statusReq = document.getElementById("covStatus")?.value || "Menunggu Cek";
+    const tikorBts = document.getElementById("covTikorBts")?.value.trim().toUpperCase() || "-";
+    const jarakTikor = document.getElementById("covJarak")?.value.trim().toUpperCase() || "-";
+
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    const tglRequest = `${dd}-${mm}-${yyyy}`;
+
+    const selectedVendors = Array.from(document.querySelectorAll('input[name="ispVendor"]:checked')).map(el => el.value);
+
+    if (selectedVendors.length === 0) {
+        alert("Pilih minimal 1 Vendor ISP Tujuan!");
+        return;
+    }
+
+        const coveragePayload = {
+        tanggal_request: tglRequest,
+        nama_mitra: namaMitra,
+        tikor_mitra: tikorMitra,
+        kapasitas_bandwidth: kapasitas,
+        vendors: selectedVendors,
+        status_req: statusReq,
+        tikor_bts_pop: tikorBts,
+        jarak_tikor: jarakTikor,
+        vendor_details: {} // TAMBAHKAN INI (objek kosong)
+    };
+    
+// ==========================================
+// 1. KIRIM KE GOOGLE SHEETS (Fetch No-Cors)
+// ==========================================
+selectedVendors.forEach(async (vendor) => {
+    const url = SHEETS_SCRIPT_URLS[vendor];
+    if (url && !url.includes("URL_EXEC")) {
+        try {
+            const formData = new URLSearchParams();
+            
+            // Siapkan data yang akan dikirim ke Sheet
+            const sheetPayload = {
+                tanggal_request: tglRequest,
+                nama_mitra: vendor.toUpperCase(), // ISI DENGAN NAMA ISP (TELKOM/XL/HSP)
+                tikor_mitra: tikorMitra,
+                kapasitas_bandwidth: kapasitas,
+                status_req: statusReq,
+                tikor_bts_pop: tikorBts,
+                jarak_tikor: jarakTikor
+            };
+
+            for (const key in sheetPayload) {
+                formData.append(key, sheetPayload[key]);
+            }
+
+            await fetch(url, {
+                method: 'POST',
+                mode: 'no-cors', // Wajib no-cors
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: formData
+            });
+            console.log(`✅ Terkirim ke Sheet ${vendor}`);
+        } catch (err) {
+            console.error(`❌ Gagal kirim ke ${vendor}:`, err.message);
+        }
+    }
+});
+    // ==========================================
+    // 2. SIMPAN KE SUPABASE (DIAKTIFKAN KEMBALI)
+    // ==========================================
+    try {
+        if (editId) {
+            const { error } = await supabaseClient.from('coverage_requests').update(coveragePayload).eq('id', editId);
+            if (error) throw error;
+        } else {
+            const { error } = await supabaseClient.from('coverage_requests').insert([coveragePayload]);
+            if (error) throw error;
+        }
+        console.log("✅ Berhasil simpan ke Supabase.");
+    } catch (err) {
+        console.error("❌ Gagal simpan ke Supabase:", err.message);
+    }
+
+    // ==========================================
+    // 3. SELESAI
+    // ==========================================
+    alert("Selesai! Data tersimpan di Web dan dikirim ke Sheets.");
+    closeCoverageModal();
+    
+    // Refresh tabel web
+    try {
+        await loadCoverageFromStorage();
+        renderCoverageTable();
+    } catch (e) {
+        console.warn("Gagal refresh tabel.");
+    }
+}
+async function renderCoverageTable() {
+    const tbody = document.getElementById("coverageTableBody");
+    if (!tbody) return;
+
+    localStorage.setItem('mahawira_coverage_requests', JSON.stringify(coverageRequests));
+
+    const searchVal = document.getElementById("filterCoverageSearch")?.value.toLowerCase() || "";
+    const vendorVal = document.getElementById("filterCoverageVendor")?.value || "All";
+
+    const filteredList = coverageRequests.filter(item => {
+        const matchSearch = (item.nama_mitra || "").toLowerCase().includes(searchVal) || 
+                            (item.tikor_mitra || "").toLowerCase().includes(searchVal);
+        
+        // Filter berdasarkan vendor yang dipilih
+        let matchVendor = true;
+        if (vendorVal !== "All") {
+            matchVendor = item.vendors && item.vendors.includes(vendorVal);
+        }
+        return matchSearch && matchVendor;
+    });
+
+    tbody.innerHTML = "";
+
+    if (filteredList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">Tidak ada data request coverage ditemukan.</td></tr>`;
+        return;
+    }
+
+    filteredList.forEach((item, index) => {
+        // Ambil data vendor_details
+        let vendor_details = item.vendor_details || {};
+if (typeof vendor_details === 'string') {
+    try { vendor_details = JSON.parse(vendor_details); } catch(e){ vendor_details = {}; }
+}
+
+        // Buat Badge HTML untuk masing-masing ISP
+        let badgesHtml = "";
+        const vendorsList = item.vendors || [];
+        
+        vendorsList.forEach(v => {
+                        // Bersihkan nama vendor di web (hilangkan spasi)
+            const vendorKey = v.replace(/[^a-zA-Z]/g, '').toUpperCase();
+            const data = vendor_details[vendorKey] || { status: 'Menunggu Cek', bts: '-', jarak: '-' };
+            let badgeColor = "bg-slate-100 text-slate-600 border-slate-200"; // Default
+            if (data.status === 'Cover') badgeColor = "bg-emerald-100 text-emerald-700 border-emerald-200";
+            if (data.status === 'Not Cover') badgeColor = "bg-rose-100 text-rose-700 border-rose-200";
+
+                        badgesHtml += `
+                <div class="flex items-center space-x-2 bg-white border border-slate-200 p-1.5 rounded mb-1 text-[11px] shadow-sm">
+                    <span class="font-bold w-16 text-slate-700">${v}</span>
+                    <span class="px-1.5 py-0.5 rounded border ${badgeColor} font-semibold w-24 text-center">${data.status}</span>
+                    <span class="text-sky-600 hover:underline cursor-pointer truncate w-32" title="Klik untuk buka Maps" onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(data.bts)}', '_blank')">${data.bts}</span>
+                    <span class="text-slate-500 w-16">${data.jarak}</span>
+                </div>
+            `;
+        });
+
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
+        tr.innerHTML = `
+            <td class="p-3 font-medium text-slate-600">${index + 1}</td>
+            <td class="p-3 font-mono text-xs">${item.tanggal_request || '-'}</td>
+            <td class="p-3 font-semibold text-slate-800">${item.nama_mitra || '-'}</td>
+            <td class="p-3 text-sky-600 hover:underline cursor-pointer font-mono text-xs" onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(item.tikor_mitra)}', '_blank')">
+                ${item.tikor_mitra || '-'}
+            </td>
+            <td class="p-3 font-medium">${item.kapasitas_bandwidth || '-'}</td>
+            <td class="p-3">${badgesHtml || '-'}</td>
+            <td class="p-3 text-center space-x-1 align-top">
+                <button onclick="editCoverage(${item.id})" class="text-sky-600 hover:text-sky-800 p-1" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button onclick="deleteCoverage(${item.id})" class="text-rose-600 hover:text-rose-800 p-1" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+function editCoverage(id) {
+    const item = coverageRequests.find(c => c.id == id);
+    if (!item) return;
+
+    document.getElementById('editCoverageId').value = item.id;
+    document.getElementById('covMitra').value = item.nama_mitra;
+    document.getElementById('covKapasitas').value = item.kapasitas_bandwidth;
+    document.getElementById('covTikor').value = item.tikor_mitra;
+    document.getElementById('covStatus').value = item.status_req;
+    document.getElementById('covTikorBts').value = item.tikor_bts_pop;
+    document.getElementById('covJarak').value = item.jarak_tikor;
+
+    const checkboxes = document.querySelectorAll('input[name="ispVendor"]');
+    checkboxes.forEach(cb => {
+        cb.checked = item.vendors && item.vendors.includes(cb.value);
+    });
+
+    openCoverageModal();
+}
+
+async function deleteCoverage(id) {
+    if (confirm("Apakah Anda ingin menghapus request coverage ini?")) {
+        try {
+            const { error } = await supabaseClient.from('coverage_requests').delete().eq('id', id);
+            if (error) throw error;
+            
+            coverageRequests = coverageRequests.filter(i => i.id !== id);
+            renderCoverageTable();
+            alert("Request coverage berhasil dihapus.");
+        } catch (err) {
+            alert("Gagal menghapus data dari database: " + err.message);
+        }
+    }
+}// ==========================================
+// SINKRONISASI DUA ARAH: GOOGLE SHEETS ↔ SUPABASE
+// ==========================================
+
+let sheetsSyncInterval = null;
+let isSyncing = false;
+
+async function syncFromSheets() {
+    if (isSyncing) return; 
+    isSyncing = true;
+
+    try {
+        const allSheetsData = [];
+        
+        for (const url of SHEETS_READ_URLS) {
+            try {
+                const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+                if (!res.ok) continue;
+                const json = await res.json();
+                if (json.status === 'ok' && Array.isArray(json.data)) {
+                    json.data.forEach(row => allSheetsData.push(row));
+                }
+            } catch (e) {}
+        }
+
+        const { data: existing, error: errExist } = await supabaseClient
+            .from('coverage_requests')
+            .select('*');
+
+        if (errExist) throw errExist;
+
+        const existingMap = new Map();
+        (existing || []).forEach(e => {
+            if(e.tikor_mitra) existingMap.set(e.tikor_mitra.replace(/\s+/g, ''), e);
+        });
+
+        let adaPerubahan = false;
+
+        for (const row of allSheetsData) {
+            if (!row.tikor_mitra || !row.nama_mitra) continue;
+            
+            const koordinatSheet = row.tikor_mitra.replace(/\s+/g, '');
+            const existingRow = existingMap.get(koordinatSheet);
+
+            if (existingRow) {
+                let vendor_details = existingRow.vendor_details || {};
+                if (typeof vendor_details === 'string') {
+                    try { vendor_details = JSON.parse(vendor_details); } catch(e){ vendor_details = {}; }
+                }
+
+                const namaVendor = row.nama_mitra.replace(/[^a-zA-Z]/g, '').toUpperCase();
+                const statusBaru = row.status_req || 'Menunggu Cek';
+                
+                const oldVendorData = vendor_details[namaVendor] || {};
+                
+                if (oldVendorData.status !== statusBaru || 
+                    oldVendorData.bts !== row.tikor_bts_pop || 
+                    oldVendorData.jarak !== row.jarak_tikor) {
+                    
+                    vendor_details[namaVendor] = {
+                        status: statusBaru,
+                        bts: row.tikor_bts_pop || '-',
+                        jarak: row.jarak_tikor || '-'
+                    };
+
+                    const { error: errUpdate } = await supabaseClient
+                        .from('coverage_requests')
+                        .update({ vendor_details: vendor_details })
+                        .eq('id', existingRow.id);
+
+                    if (!errUpdate) {
+                        console.log(`✅ Sinkron DB: ${namaVendor} -> ${statusBaru}`);
+                        adaPerubahan = true;
+                        
+                        // KUNCI ANTI-GAGAL: Langsung update data di memori lokal web!
+                        if (coverageRequests) {
+                            const localRow = coverageRequests.find(c => String(c.id) === String(existingRow.id));
+                            if (localRow) {
+                                localRow.vendor_details = vendor_details;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Jika ada perubahan, gambar ulang layar dari memori lokal (TIDAK PERLU FETCH ULANG)
+        if (adaPerubahan) {
+            console.log("🔄 Menggambar ulang tabel dari memori lokal...");
+            renderCoverageTable(); 
+        }
+
+    } catch (err) {
+        console.warn('[SheetsSync] Gagal sinkron:', err.message);
+    } finally {
+        isSyncing = false;
+    }
+}
+// Fungsi untuk memulai pengecekan otomatis (polling) tiap 30 detik
+function startSheetsSync() {
+    stopSheetsSync();
+    syncFromSheets(); // Tarik data langsung saat halaman dibuka
+    sheetsSyncInterval = setInterval(syncFromSheets, CONFIG.SHEETS_SYNC_INTERVAL_MS || 30000);
+}
+
+// Fungsi untuk menghentikan pengecekan otomatis
+function stopSheetsSync() {
+    if (sheetsSyncInterval) {
+        clearInterval(sheetsSyncInterval);
+        sheetsSyncInterval = null;
     }
 }
