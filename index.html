@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mahawira Network Operations Center - Daily Incident Report</title>
+    <title>Mahawira Network Operations Center - Daily Incident & Coverage Check</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -69,16 +69,19 @@
                     <div>
                         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">MENU UTAMA</p>
                         <nav class="space-y-1">
-                            <a href="#dashboardSection" class="flex items-center px-3 py-2 text-xs font-medium text-sky-700 bg-sky-50 rounded-lg">
+                            <a href="#dashboardSection" onclick="switchNav('dashboard')" id="navLinkDashboard" class="flex items-center px-3 py-2 text-xs font-medium text-sky-700 bg-sky-50 rounded-lg">
                                 <i class="fa-solid fa-chart-line w-5"></i> Dashboard
                             </a>
+                            <a href="#coverageSection" onclick="switchNav('coverage')" id="navLinkCoverage" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
+                                <i class="fa-solid fa-tower-broadcast w-5 text-emerald-600"></i> Cek Coverage Metro
+                            </a>
                             <button onclick="openIncidentModal()" class="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition text-left">
-                                <i class="fa-solid fa-circle-plus w-5 text-sky-600"></i> Input Report
+                                <i class="fa-solid fa-circle-plus w-5 text-sky-600"></i> Input Report Gangguan
                             </button>
-                            <a href="#tableSection" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
+                            <a href="#tableSection" onclick="switchNav('dashboard')" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
                                 <i class="fa-solid fa-list-check w-5 text-amber-600"></i> Incident List
                             </a>
-                            <a href="#analyticsSection" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
+                            <a href="#analyticsSection" onclick="switchNav('dashboard')" class="flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition">
                                 <i class="fa-solid fa-chart-pie w-5 text-purple-600"></i> Analytics
                             </a>
                             <button onclick="openExportModal()" class="w-full flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition text-left">
@@ -110,7 +113,7 @@
                     <button onclick="toggleSidebar()" class="md:hidden text-slate-600 p-2">
                         <i class="fa-solid fa-bars text-lg"></i>
                     </button>
-                    <h2 class="font-bold text-slate-800 text-base">Monitoring & Daily Report Gangguan Mitra</h2>
+                    <h2 id="headerTitle" class="font-bold text-slate-800 text-base">Monitoring & Daily Report Gangguan Mitra</h2>
                 </div>
                 
                 <div class="flex items-center space-x-2">
@@ -128,130 +131,190 @@
             </header>
 
             <main class="flex-grow p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
-                <!-- STATS CARDS -->
-                <div id="dashboardSection" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
-                        <div>
-                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Incident Hari Ini</p>
-                            <p id="statToday" class="text-2xl font-bold text-slate-800 mt-1">0</p>
-                            <span id="statTodayBadge" class="text-xs font-medium text-slate-500">0 Solved / 0 Open</span>
+                
+                <!-- VIEW 1: DASHBOARD & INCIDENT REPORT -->
+                <div id="mainDashboardView" class="space-y-6">
+                    <!-- STATS CARDS -->
+                    <div id="dashboardSection" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Incident Hari Ini</p>
+                                <p id="statToday" class="text-2xl font-bold text-slate-800 mt-1">0</p>
+                                <span id="statTodayBadge" class="text-xs font-medium text-slate-500">0 Solved / 0 Open</span>
+                            </div>
+                            <div class="p-3 bg-sky-50 border border-sky-100 rounded-xl text-sky-600 text-2xl">
+                                <i class="fa-solid fa-triangle-exclamation"></i>
+                            </div>
                         </div>
-                        <div class="p-3 bg-sky-50 border border-sky-100 rounded-xl text-sky-600 text-2xl">
-                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Gangguan Metro</p>
+                                <p id="statMetro" class="text-2xl font-bold text-rose-600 mt-1">0</p>
+                                <span class="text-xs text-slate-400">External Provider Link</span>
+                            </div>
+                            <div class="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-2xl">
+                                <i class="fa-solid fa-tower-cell"></i>
+                            </div>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Gangguan Mikrotik</p>
+                                <p id="statMikrotik" class="text-2xl font-bold text-amber-600 mt-1">0</p>
+                                <span class="text-xs text-slate-400">Internal Hardware & Config</span>
+                            </div>
+                            <div class="p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-600 text-2xl">
+                                <i class="fa-solid fa-microchip"></i>
+                            </div>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
+                            <div>
+                                <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Total Downtime</p>
+                                <p id="statDowntime" class="text-2xl font-bold text-cyan-600 mt-1">0 Menit</p>
+                                <span id="statDowntimeHours" class="text-xs text-slate-400">~0 Jam Accumulated</span>
+                            </div>
+                            <div class="p-3 bg-cyan-50 border border-cyan-100 rounded-xl text-cyan-600 text-2xl">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
                         </div>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
-                        <div>
-                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Gangguan Metro</p>
-                            <p id="statMetro" class="text-2xl font-bold text-rose-600 mt-1">0</p>
-                            <span class="text-xs text-slate-400">External Provider Link</span>
+
+                    <!-- CHARTS -->
+                    <div id="analyticsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                            <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
+                                <i class="fa-solid fa-ranking-star text-amber-500 mr-2"></i> Top Mitra Gangguan
+                            </h3>
+                            <div class="relative h-56">
+                                <canvas id="topMitraChart"></canvas>
+                            </div>
                         </div>
-                        <div class="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-2xl">
-                            <i class="fa-solid fa-tower-cell"></i>
+                        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                            <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
+                                <i class="fa-solid fa-chart-pie text-sky-500 mr-2"></i> Rasio Sumber Masalah
+                            </h3>
+                            <div class="relative h-56">
+                                <canvas id="sourceRatioChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                            <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
+                                <i class="fa-solid fa-chart-line text-emerald-500 mr-2"></i> Tren Gangguan Daily
+                            </h3>
+                            <div class="relative h-56">
+                                <canvas id="dailyTrendChart"></canvas>
+                            </div>
                         </div>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
-                        <div>
-                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Gangguan Mikrotik</p>
-                            <p id="statMikrotik" class="text-2xl font-bold text-amber-600 mt-1">0</p>
-                            <span class="text-xs text-slate-400">Internal Hardware & Config</span>
+
+                    <!-- TABEL DATA & FILTER INCIDENT -->
+                    <div id="tableSection" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                        <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-3 items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <i class="fa-solid fa-list-check text-slate-400"></i>
+                                <h3 class="font-bold text-slate-700 text-sm">Riwayat Daily Report Gangguan</h3>
+                            </div>
+                            <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                                <input type="text" id="filterSearch" oninput="renderApp()" placeholder="Cari Mitra / ID / Detail..." class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-3 py-1.5 w-full md:w-48">
+                                <input type="month" id="filterMonth" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
+                                <select id="filterSumber" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
+                                    <option value="All">Semua Sumber</option>
+                                    <option value="Metro">Sisi Metro</option>
+                                    <option value="Mikrotik">Sisi Mikrotik</option>
+                                </select>
+                                <select id="filterStatus" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
+                                    <option value="All">Semua Status</option>
+                                    <option value="Pending">Pending (Open)</option>
+                                    <option value="Resolved">Resolved</option>
+                                </select>
+                                <button onclick="clearFilter()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-1.5 rounded-lg text-xs" title="Reset Filter">
+                                    <i class="fa-solid fa-rotate-left"></i>
+                                </button>
+                            </div>
                         </div>
-                        <div class="p-3 bg-amber-50 border border-amber-100 rounded-xl text-amber-600 text-2xl">
-                            <i class="fa-solid fa-microchip"></i>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead class="bg-slate-50 text-slate-500 border-b border-slate-200 uppercase font-semibold">
+                                    <tr>
+                                        <th class="p-3">Tanggal & Jam</th>
+                                        <th class="p-3">Mitra & ID</th>
+                                        <th class="p-3">Sumber Masalah</th>
+                                        <th class="p-3">Detail Kategori</th>
+                                        <th class="p-3">Downtime</th>
+                                        <th class="p-3">Status</th>
+                                        <th class="p-3 text-center">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="incidentTableBody" class="divide-y divide-slate-100"></tbody>
+                            </table>
                         </div>
-                    </div>
-                    <div class="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-sm">
-                        <div>
-                            <p class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Total Downtime</p>
-                            <p id="statDowntime" class="text-2xl font-bold text-cyan-600 mt-1">0 Menit</p>
-                            <span id="statDowntimeHours" class="text-xs text-slate-400">~0 Jam Accumulated</span>
-                        </div>
-                        <div class="p-3 bg-cyan-50 border border-cyan-100 rounded-xl text-cyan-600 text-2xl">
-                            <i class="fa-solid fa-clock-rotate-left"></i>
+
+                        <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between text-xs text-slate-500 gap-3">
+                            <div id="tableInfo">Menampilkan 0 data</div>
+                            <div class="flex items-center space-x-2">
+                                <button id="btnPrevPage" onclick="changePage(-1)" class="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-50">Prev</button>
+                                <span id="pageIndicator" class="px-2 font-medium">Page 1 of 1</span>
+                                <button id="btnNextPage" onclick="changePage(1)" class="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-50">Next</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- CHARTS -->
-                <div id="analyticsSection" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                        <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
-                            <i class="fa-solid fa-ranking-star text-amber-500 mr-2"></i> Top Mitra Gangguan
-                        </h3>
-                        <div class="relative h-56">
-                            <canvas id="topMitraChart"></canvas>
+                <!-- VIEW 2: CEK COVERAGE METRO -->
+                <div id="coverageView" class="space-y-6 hidden">
+                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-base flex items-center">
+                                <i class="fa-solid fa-tower-broadcast text-emerald-600 mr-2"></i> Manajemen Cek Coverage Metro ISP
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-1">Kelola request tikor mitra & pantau status coverage dari 7 vendor partner (Telkom, XL, Indosat, Fiber Star, HSP, Lintasarta, iForte).</p>
                         </div>
+                        <button onclick="openCoverageModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow-sm transition flex items-center whitespace-nowrap">
+                            <i class="fa-solid fa-plus mr-1.5"></i> Input Request Tikor Baru
+                        </button>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                        <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
-                            <i class="fa-solid fa-chart-pie text-sky-500 mr-2"></i> Rasio Sumber Masalah
-                        </h3>
-                        <div class="relative h-56">
-                            <canvas id="sourceRatioChart"></canvas>
+
+                    <!-- TABLE COVERAGE METRO (SUDAH DIPERBAIKI MENJADI 10 KOLOM) -->
+                    <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                        <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-3 items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <i class="fa-solid fa-map-location-dot text-slate-400"></i>
+                                <h3 class="font-bold text-slate-700 text-sm">Daftar Request Coverage Mitra</h3>
+                            </div>
+                            <div class="flex flex-wrap gap-2 w-full md:w-auto">
+                                <input type="text" id="filterCoverageSearch" oninput="renderCoverageTable()" placeholder="Cari Mitra / Tikor..." class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-3 py-1.5 w-full md:w-48">
+                                <select id="filterCoverageVendor" onchange="renderCoverageTable()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
+                                    <option value="All">Semua Vendor ISP</option>
+                                    <option value="Telkom">Telkom</option>
+                                    <option value="XL">XL</option>
+                                    <option value="Indosat">Indosat</option>
+                                    <option value="Fiber Star">Fiber Star</option>
+                                    <option value="HSP">HSP</option>
+                                    <option value="Lintasarta">Lintasarta</option>
+                                    <option value="iForte">iForte</option>
+                                </select>
+                            </div>
                         </div>
-                    </div>
-                    <div class="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                        <h3 class="font-bold text-slate-700 text-sm mb-4 flex items-center">
-                            <i class="fa-solid fa-chart-line text-emerald-500 mr-2"></i> Tren Gangguan Daily
-                        </h3>
-                        <div class="relative h-56">
-                            <canvas id="dailyTrendChart"></canvas>
+
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead class="bg-slate-50 text-slate-500 border-b border-slate-200 uppercase font-semibold">
+    <tr>
+        <th class="p-3">NO</th>
+        <th class="p-3">TANGGAL REQUEST</th>
+        <th class="p-3">NAMA MITRA</th>
+        <th class="p-3">TIKOR MITRA</th>
+        <th class="p-3">KAPASITAS BANDWITH</th>
+        <th class="p-3">STATUS PER VENDOR</th>
+        <th class="p-3">AKSI</th>
+    </tr>
+</thead>
+                                <tbody id="coverageTableBody" class="divide-y divide-slate-100"></tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
 
-                <!-- TABEL DATA & FILTER -->
-                <div id="tableSection" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                    <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-3 items-center justify-between">
-                        <div class="flex items-center space-x-2">
-                            <i class="fa-solid fa-list-check text-slate-400"></i>
-                            <h3 class="font-bold text-slate-700 text-sm">Riwayat Daily Report Gangguan</h3>
-                        </div>
-                        <div class="flex flex-wrap gap-2 w-full md:w-auto">
-                            <input type="text" id="filterSearch" oninput="renderApp()" placeholder="Cari Mitra / ID / Detail..." class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-3 py-1.5 w-full md:w-48">
-                            <input type="month" id="filterMonth" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
-                            <select id="filterSumber" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
-                                <option value="All">Semua Sumber</option>
-                                <option value="Metro">Sisi Metro</option>
-                                <option value="Mikrotik">Sisi Mikrotik</option>
-                            </select>
-                            <select id="filterStatus" onchange="renderApp()" class="bg-white border border-slate-300 text-xs text-slate-700 rounded-lg px-2 py-1.5">
-                                <option value="All">Semua Status</option>
-                                <option value="Pending">Pending (Open)</option>
-                                <option value="Resolved">Resolved</option>
-                            </select>
-                            <button onclick="clearFilter()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-2.5 py-1.5 rounded-lg text-xs" title="Reset Filter">
-                                <i class="fa-solid fa-rotate-left"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-xs border-collapse">
-                            <thead class="bg-slate-50 text-slate-500 border-b border-slate-200 uppercase font-semibold">
-                                <tr>
-                                    <th class="p-3">Tanggal & Jam</th>
-                                    <th class="p-3">Mitra & ID</th>
-                                    <th class="p-3">Sumber Masalah</th>
-                                    <th class="p-3">Detail Kategori</th>
-                                    <th class="p-3">Downtime</th>
-                                    <th class="p-3">Status</th>
-                                    <th class="p-3 text-center">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody id="incidentTableBody" class="divide-y divide-slate-100"></tbody>
-                        </table>
-                    </div>
-
-                    <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between text-xs text-slate-500 gap-3">
-                        <div id="tableInfo">Menampilkan 0 data</div>
-                        <div class="flex items-center space-x-2">
-                            <button id="btnPrevPage" onclick="changePage(-1)" class="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-50">Prev</button>
-                            <span id="pageIndicator" class="px-2 font-medium">Page 1 of 1</span>
-                            <button id="btnNextPage" onclick="changePage(1)" class="px-3 py-1 bg-white border border-slate-200 hover:bg-slate-100 rounded text-slate-600 disabled:opacity-50">Next</button>
-                        </div>
-                    </div>
-                </div>
             </main>
 
             <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
@@ -260,7 +323,7 @@
         </div>
     </div>
 
-    <!-- MODAL FORM INPUT / EDIT REPORT (RESPONSIF) -->
+    <!-- MODAL FORM INPUT / EDIT REPORT GANGGUAN -->
     <div id="incidentModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4 overflow-y-auto">
         <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden transform transition-all my-8">
             <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center sticky top-0 z-10">
@@ -345,6 +408,95 @@
                     </button>
                     <button type="submit" id="btnSubmit" class="bg-sky-600 hover:bg-sky-500 text-white font-semibold py-2 px-6 rounded-lg text-sm transition shadow-md flex items-center">
                         <i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Report
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL FORM INPUT CEK COVERAGE METRO -->
+    <div id="coverageModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4 overflow-y-auto">
+        <div class="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden transform transition-all my-8">
+            <div class="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center sticky top-0 z-10">
+                <h3 class="font-bold text-slate-800 text-sm flex items-center">
+                    <i class="fa-solid fa-tower-broadcast text-emerald-600 mr-2 text-base"></i> Form Request Tikor Cek Coverage Metro
+                </h3>
+                <button onclick="closeCoverageModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="coverageForm" onsubmit="handleCoverageSubmit(event)" class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                <input type="hidden" id="editCoverageId" value="">
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Mitra / Pelanggan</label>
+                        <input type="text" id="covMitra" placeholder="Contoh: PT. Cipta Solusi" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Kapasitas Bandwidth</label>
+                        <input type="text" id="covKapasitas" placeholder="Contoh: 100 Mbps / 1 Gbps" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Titik Koordinat (Tikor / Link Google Maps Mitra)</label>
+                    <input type="text" id="covTikor" placeholder="-7.2575, 112.7521 atau link Google Maps" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Pilih Vendor ISP Tujuan (7 Vendor Partner)</label>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <label class="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                            <input type="checkbox" name="ispVendor" value="Telkom" class="rounded text-emerald-600"> <span>Telkom</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                            <input type="checkbox" name="ispVendor" value="XL" class="rounded text-emerald-600"> <span>XL</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                            <input type="checkbox" name="ispVendor" value="Indosat" class="rounded text-emerald-600"> <span>Indosat</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                            <input type="checkbox" name="ispVendor" value="Fiber Star" class="rounded text-emerald-600"> <span>Fiber Star</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                            <input type="checkbox" name="ispVendor" value="HSP" class="rounded text-emerald-600"> <span>HSP</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                            <input type="checkbox" name="ispVendor" value="Lintasarta" class="rounded text-emerald-600"> <span>Lintasarta</span>
+                        </label>
+                        <label class="flex items-center space-x-2 text-xs font-medium text-slate-700 cursor-pointer">
+                            <input type="checkbox" name="ispVendor" value="iForte" class="rounded text-emerald-600"> <span>iForte</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Status Request</label>
+                        <select id="covStatus" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                            <option value="Menunggu Cek">Menunggu Cek (Pending)</option>
+                            <option value="Cover">Cover (Tersedia)</option>
+                            <option value="Not Cover">Not Cover (Tidak Tercover)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Tikor BTS/POP Terdekat</label>
+                        <input type="text" id="covTikorBts" placeholder="Contoh: POP Sudirman" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Jarak Tikor</label>
+                        <input type="text" id="covJarak" placeholder="Contoh: 150 METER" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                    <button type="button" onclick="closeCoverageModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-2 px-4 rounded-lg text-sm transition">
+                        Batal
+                    </button>
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-6 rounded-lg text-sm transition shadow-md flex items-center">
+                        <i class="fa-solid fa-floppy-disk mr-2"></i> Simpan Request Coverage
                     </button>
                 </div>
             </form>
