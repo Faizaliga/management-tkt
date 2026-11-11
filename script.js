@@ -20,6 +20,74 @@ const USERS = [
 
 let currentUser = null;
 
+// ==========================================
+// UTILITY HELPERS (XSS, MAPS, TOAST)
+// ==========================================
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function openMapLink(queryOrUrl) {
+    if (!queryOrUrl || queryOrUrl === '-' || queryOrUrl === 'undefined') return;
+    const trimmed = String(queryOrUrl).trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+        window.open(trimmed, '_blank', 'noopener,noreferrer');
+    } else {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmed)}`, '_blank', 'noopener,noreferrer');
+    }
+}
+
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast-item flex items-center p-3.5 rounded-xl border text-xs font-semibold shadow-lg ${
+        type === 'success' 
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+            : type === 'error' 
+                ? 'bg-rose-50 border-rose-200 text-rose-800' 
+                : type === 'warning'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-sky-50 border-sky-200 text-sky-800'
+    }`;
+
+    const iconClass = 
+        type === 'success' ? 'fa-solid fa-circle-check text-emerald-600' :
+        type === 'error' ? 'fa-solid fa-circle-xmark text-rose-600' :
+        type === 'warning' ? 'fa-solid fa-triangle-exclamation text-amber-600' :
+        'fa-solid fa-circle-info text-sky-600';
+
+    toast.innerHTML = `
+        <i class="${iconClass} text-base mr-2.5 flex-shrink-0"></i>
+        <span class="flex-grow">${escapeHtml(message)}</span>
+        <button onclick="this.parentElement.remove()" class="ml-2 text-slate-400 hover:text-slate-600 p-1">
+            <i class="fa-solid fa-xmark text-xs"></i>
+        </button>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('toast-fadeout');
+        setTimeout(() => toast.remove(), 250);
+    }, 3500);
+}
+
+function normalizeTime(timeStr) {
+    if (!timeStr) return '';
+    return timeStr.trim().replace('.', ':');
+}
+
+// ==========================================
+// LIFECYCLE & EVENT LISTENERS
+// ==========================================
 window.onload = async function() {
     const savedUser = localStorage.getItem('isp_current_user');
     if (savedUser) {
@@ -27,6 +95,30 @@ window.onload = async function() {
     }
     if (currentUser) { await showApp(); } else { showLogin(); }
 };
+
+// Tutup modal dengan tombol Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeIncidentModal();
+        closeCoverageModal();
+        closeModal();
+        closeExportModal();
+    }
+});
+
+// Tutup modal saat klik area luar (backdrop)
+document.addEventListener('click', (e) => {
+    const modalIds = ['incidentModal', 'coverageModal', 'detailModal', 'exportModal'];
+    modalIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && e.target === el && !el.classList.contains('hidden')) {
+            if (id === 'incidentModal') closeIncidentModal();
+            else if (id === 'coverageModal') closeCoverageModal();
+            else if (id === 'detailModal') closeModal();
+            else if (id === 'exportModal') closeExportModal();
+        }
+    });
+});
 
 function handleLogin(e) {
     e.preventDefault();
@@ -63,14 +155,16 @@ async function showApp() {
     document.getElementById('appScreen').classList.remove('hidden');
 
     const tbody = document.getElementById('incidentTableBody');
-    if(tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat data dari server...</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Memuat data dari server...</td></tr>`;
 
     await loadFromStorage();
     await loadCoverageFromStorage();
     
-    // AKTIFKAN REALTIME LISTENER SUPABASE UNTUK COVERAGE
+    // AKTIFKAN REALTIME LISTENERS SUPABASE
+    initTicketsRealtime();
     initCoverageRealtime();
     startSheetsSync();
+
     if (document.getElementById('inputTanggal')) document.getElementById('inputTanggal').value = CONFIG.DEFAULT_DATE;
     if (document.getElementById('inputTanggalSelesai')) document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
 
@@ -114,12 +208,24 @@ function switchNav(viewType) {
         linkDashboard.className = "flex items-center px-3 py-2 text-xs font-medium text-sky-700 bg-sky-50 rounded-lg";
         linkCoverage.className = "flex items-center px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition";
     }
+
+    // Auto close sidebar on mobile
+    if (window.innerWidth < 768) {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('-translate-x-full')) {
+            sidebar.classList.add('-translate-x-full');
+        }
+    }
 }
 
 // ==========================================
 // MODAL CONTROLLER
 // ==========================================
 function openIncidentModal(isEdit = false) {
+    if (window.innerWidth < 768) {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('-translate-x-full')) sidebar.classList.add('-translate-x-full');
+    }
     const modal = document.getElementById('incidentModal');
     const titleText = document.getElementById('modalTitleText');
     if (modal) {
@@ -135,6 +241,10 @@ function closeIncidentModal() {
 }
 
 function openCoverageModal() {
+    if (window.innerWidth < 768) {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('-translate-x-full')) sidebar.classList.add('-translate-x-full');
+    }
     const modal = document.getElementById('coverageModal');
     if (modal) modal.classList.remove('hidden');
 }
@@ -142,10 +252,15 @@ function openCoverageModal() {
 function closeCoverageModal() {
     const modal = document.getElementById('coverageModal');
     if (modal) modal.classList.add('hidden');
-    document.getElementById('coverageForm').reset();
-    document.getElementById('editCoverageId').value = '';
+    const form = document.getElementById('coverageForm');
+    if (form) form.reset();
+    const editId = document.getElementById('editCoverageId');
+    if (editId) editId.value = '';
 }
 
+// ==========================================
+// STORAGE & DATABASE (SUPABASE)
+// ==========================================
 async function loadFromStorage() {
     try {
         const { data, error } = await supabaseClient
@@ -156,7 +271,7 @@ async function loadFromStorage() {
 
         if (error) throw error;
 
-        incidents = data.map(item => ({
+        incidents = (data || []).map(item => ({
             id: item.id,
             tanggal: item.tanggal_kejadian,
             tanggalSelesai: item.tanggal_solved,
@@ -174,7 +289,7 @@ async function loadFromStorage() {
         }));
         localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(incidents));
     } catch (err) {
-        console.error('Gagal load dari Supabase:', err.message);
+        console.error('Gagal load tickets dari Supabase:', err.message);
         const stored = localStorage.getItem(CONFIG.STORAGE_KEY);
         if (stored) {
             try {
@@ -196,17 +311,24 @@ async function loadCoverageFromStorage() {
 
         if (error) throw error;
 
-        coverageRequests = (data || []).map(item => ({
-            id: item.id,
-            tanggal_request: item.tanggal_request || '-',
-            nama_mitra: item.nama_mitra || '',
-            tikor_mitra: item.tikor_mitra || '',
-            kapasitas_bandwidth: item.kapasitas_bandwidth || '',
-            vendors: item.vendors || [],
-            status_req: item.status_req || 'Menunggu Cek',
-            tikor_bts_pop: item.tikor_bts_pop || '-',
-            jarak_tikor: item.jarak_tikor || '-'
-        }));
+        coverageRequests = (data || []).map(item => {
+            let vDetails = item.vendor_details || {};
+            if (typeof vDetails === 'string') {
+                try { vDetails = JSON.parse(vDetails); } catch (e) { vDetails = {}; }
+            }
+            return {
+                id: item.id,
+                tanggal_request: item.tanggal_request || '-',
+                nama_mitra: item.nama_mitra || '',
+                tikor_mitra: item.tikor_mitra || '',
+                kapasitas_bandwidth: item.kapasitas_bandwidth || '',
+                vendors: Array.isArray(item.vendors) ? item.vendors : [],
+                status_req: item.status_req || 'Menunggu Cek',
+                tikor_bts_pop: item.tikor_bts_pop || '-',
+                jarak_tikor: item.jarak_tikor || '-',
+                vendor_details: vDetails
+            };
+        });
         
         localStorage.setItem('mahawira_coverage_requests', JSON.stringify(coverageRequests));
     } catch (err) {
@@ -223,20 +345,35 @@ async function loadCoverageFromStorage() {
     }
 }
 
+// SETUP REALTIME SUPABASE UNTUK TICKETS
+function initTicketsRealtime() {
+    try {
+        supabaseClient
+            .channel('public:tickets')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+                loadFromStorage().then(() => {
+                    renderApp();
+                });
+            })
+            .subscribe();
+    } catch (e) {
+        console.error('Tickets realtime subscription error:', e);
+    }
+}
+
 // SETUP REALTIME SUPABASE UNTUK COVERAGE
 function initCoverageRealtime() {
     try {
         supabaseClient
             .channel('public:coverage_requests')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'coverage_requests' }, payload => {
-                console.log('Realtime change detected:', payload);
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'coverage_requests' }, () => {
                 loadCoverageFromStorage().then(() => {
                     renderCoverageTable();
                 });
             })
             .subscribe();
     } catch (e) {
-        console.error('Realtime subscription error:', e);
+        console.error('Coverage realtime subscription error:', e);
     }
 }
 
@@ -295,14 +432,22 @@ function handleStatusChange() {
 
 function calculateDowntime() {
     const tglMulai = document.getElementById('inputTanggal').value;
-    const jamMulai = document.getElementById('inputJamMulai').value;
+    const jamMulai = normalizeTime(document.getElementById('inputJamMulai').value);
     const tglSelesai = document.getElementById('inputTanggalSelesai').value;
-    const jamSelesai = document.getElementById('inputJamSelesai').value;
+    const jamSelesai = normalizeTime(document.getElementById('inputJamSelesai').value);
     const downtimeInput = document.getElementById('inputDowntime');
 
     if (tglMulai && jamMulai && tglSelesai && jamSelesai) {
-        const startDateTime = new Date(`${tglMulai}T${jamMulai}:00`);
-        const endDateTime = new Date(`${tglSelesai}T${jamSelesai}:00`);
+        const startH = jamMulai.length === 5 ? jamMulai : jamMulai.padStart(5, '0');
+        const endH = jamSelesai.length === 5 ? jamSelesai : jamSelesai.padStart(5, '0');
+        
+        const startDateTime = new Date(`${tglMulai}T${startH}:00`);
+        const endDateTime = new Date(`${tglSelesai}T${endH}:00`);
+
+        if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+            downtimeInput.value = "Error: Format jam/tanggal tidak valid!";
+            return;
+        }
 
         if (endDateTime < startDateTime) {
             downtimeInput.value = "Error: Waktu selesai lebih awal!";
@@ -328,27 +473,32 @@ function calculateDowntime() {
 async function handleFormSubmit(e) {
     e.preventDefault();
 
-    const editIndex = parseInt(document.getElementById('editIndex').value);
+    const editIndex = parseInt(document.getElementById('editIndex').value, 10);
     const sumberValue = document.getElementById('inputSumber').value;
     let kategoriValue = document.getElementById('inputKategori').value;
     const statusValue = document.getElementById('inputStatus').value;
-    const jamSelesaiValue = document.getElementById('inputJamSelesai').value;
+    const jamMulaiValue = normalizeTime(document.getElementById('inputJamMulai').value);
+    const jamSelesaiValue = normalizeTime(document.getElementById('inputJamSelesai').value);
     const tanggalSelesaiValue = document.getElementById('inputTanggalSelesai').value;
 
     if (statusValue === 'Resolved' && (!jamSelesaiValue || !tanggalSelesaiValue)) {
-        alert("Untuk menutup tiket (Resolved), Tanggal Selesai dan Jam Solved wajib diisi!");
+        showToast("Untuk menutup tiket (Resolved), Tanggal Selesai dan Jam Solved wajib diisi!", "warning");
         return;
     }
 
     if (!kategoriValue && SUB_CATEGORIES[sumberValue]) kategoriValue = SUB_CATEGORIES[sumberValue][0];
 
+    calculateDowntime();
     const downtimeText = document.getElementById('inputDowntime').value;
 
     let downtimeMenitInt = 0;
     if (downtimeText && !downtimeText.includes("Error")) {
-        const days = parseInt(downtimeText.match(/(\d+)\s*Hari/) || [0]) || 0;
-        const hours = parseInt(downtimeText.match(/(\d+)\s*Jam/) || [0]) || 0;
-        const mins = parseInt(downtimeText.match(/(\d+)\s*Menit/) || [0]) || 0;
+        const mDays = downtimeText.match(/(\d+)\s*Hari/);
+        const mHours = downtimeText.match(/(\d+)\s*Jam/);
+        const mMins = downtimeText.match(/(\d+)\s*Menit/);
+        const days = mDays ? parseInt(mDays[1], 10) : 0;
+        const hours = mHours ? parseInt(mHours[1], 10) : 0;
+        const mins = mMins ? parseInt(mMins[1], 10) : 0;
         downtimeMenitInt = (days * 24 * 60) + (hours * 60) + mins;
     }
 
@@ -359,13 +509,13 @@ async function handleFormSubmit(e) {
         id_pelanggan: document.getElementById('inputIdPelanggan').value.trim().toUpperCase(),
         sumber_masalah: sumberValue,
         detail_kategori: kategoriValue ? kategoriValue.toUpperCase() : '',
-        jam_kejadian: document.getElementById('inputJamMulai').value || null,
+        jam_kejadian: jamMulaiValue || null,
         jam_solved: jamSelesaiValue || null,
         downtime_menit: downtimeMenitInt,
         downtime_formatted: downtimeText,
         keterangan: document.getElementById('inputKeterangan').value.trim().toUpperCase(),
         status_ticket: statusValue,
-        created_by: document.getElementById('inputOperator') ? document.getElementById('inputOperator').value.toUpperCase() : 'SYSTEM'
+        created_by: document.getElementById('inputOperator') ? document.getElementById('inputOperator').value.toUpperCase() : (currentUser ? currentUser.name.toUpperCase() : 'SYSTEM')
     };
 
     if (editIndex >= 0) {
@@ -390,6 +540,7 @@ async function handleFormSubmit(e) {
             status: supabasePayload.status_ticket,
             createdBy: supabasePayload.created_by
         };
+        showToast("Laporan gangguan berhasil diperbarui!", "success");
     } else {
         supabasePayload.id = Date.now(); 
         
@@ -411,6 +562,7 @@ async function handleFormSubmit(e) {
             status: supabasePayload.status_ticket,
             createdBy: supabasePayload.created_by 
         });
+        showToast("Laporan gangguan baru berhasil disimpan!", "success");
     }
 
     closeIncidentModal(); 
@@ -427,13 +579,15 @@ function resetForm() {
     document.getElementById('inputTanggalSelesai').value = CONFIG.DEFAULT_DATE;
     document.getElementById('inputStatus').value = 'Pending';
     document.getElementById('inputDowntime').value = '';
-    if(document.getElementById('inputOperator')) document.getElementById('inputOperator').value = '';
+    if (document.getElementById('inputOperator') && currentUser) {
+        document.getElementById('inputOperator').value = currentUser.name.toUpperCase();
+    }
     
     updateSubCategoryOptions();
 }
 
 function editRecord(id) {
-    const index = incidents.findIndex(item => item.id === id);
+    const index = incidents.findIndex(item => String(item.id) === String(id));
     if (index === -1) return;
 
     const item = incidents[index];
@@ -446,57 +600,57 @@ function editRecord(id) {
     
     updateSubCategoryOptions(item.kategori);
     
-    document.getElementById('inputJamMulai').value = item.jamMulai;
+    document.getElementById('inputJamMulai').value = item.jamMulai || '';
     document.getElementById('inputJamSelesai').value = item.jamSelesai || '';
     document.getElementById('inputDowntime').value = item.downtimeText || item.downtime_formatted || '';
     document.getElementById('inputKeterangan').value = item.keterangan;
     document.getElementById('inputStatus').value = item.status;
 
-    if(document.getElementById('inputOperator')) {
-        document.getElementById('inputOperator').value = item.createdBy || '';
+    if (document.getElementById('inputOperator')) {
+        document.getElementById('inputOperator').value = (item.createdBy || '').toUpperCase();
     }
 
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i> Update Report';
-
     openIncidentModal(true); 
 }
 
 async function deleteRecord(id) {
     if (confirm('Apakah Anda yakin ingin menghapus data gangguan ini?')) {
         await saveToStorage('DELETE', id);
-        incidents = incidents.filter(item => item.id !== id);
+        incidents = incidents.filter(item => String(item.id) !== String(id));
         renderApp();
+        showToast("Data gangguan berhasil dihapus.", "success");
     }
 }
 
 function showDetail(id) {
-    const item = incidents.find(i => i.id === id);
+    const item = incidents.find(i => String(i.id) === String(id));
     if (!item) return;
 
     const modalBody = document.getElementById('modalBody');
     modalBody.innerHTML = `
         <div class="grid grid-cols-2 gap-2 border-b border-slate-200 pb-3">
-            <div><span class="text-xs text-slate-400 block">Mitra</span> <strong class="text-slate-700">${item.mitra}</strong></div>
-            <div><span class="text-xs text-slate-400 block">ID Pelanggan</span> <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono text-xs">${item.idPelanggan}</code></div>
+            <div><span class="text-xs text-slate-400 block">Mitra</span> <strong class="text-slate-700">${escapeHtml(item.mitra)}</strong></div>
+            <div><span class="text-xs text-slate-400 block">ID Pelanggan</span> <code class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-mono text-xs">${escapeHtml(item.idPelanggan)}</code></div>
         </div>
         <div class="grid grid-cols-2 gap-2 border-b border-slate-200 pb-3">
-            <div><span class="text-xs text-slate-400 block">Tanggal Kejadian</span> ${item.tanggal} (${item.jamMulai})</div>
-            <div><span class="text-xs text-slate-400 block">Tanggal Selesai</span> ${item.tanggalSelesai || '-'} (${item.jamSelesai || '-'})</div>
+            <div><span class="text-xs text-slate-400 block">Tanggal Kejadian</span> ${escapeHtml(item.tanggal)} (${escapeHtml(item.jamMulai || '-')})</div>
+            <div><span class="text-xs text-slate-400 block">Tanggal Selesai</span> ${escapeHtml(item.tanggalSelesai || '-')} (${escapeHtml(item.jamSelesai || '-')})</div>
         </div>
         <div class="grid grid-cols-2 gap-2 border-b border-slate-200 pb-3">
-            <div><span class="text-xs text-slate-400 block">Sumber Gangguan</span> <span class="font-semibold ${item.sumber==='Metro'?'text-rose-600':'text-amber-600'}">${item.sumber}</span></div>
-            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> <span class="font-bold text-emerald-600">${item.downtimeText || item.downtime_formatted || '-'}</span></div>
+            <div><span class="text-xs text-slate-400 block">Sumber Gangguan</span> <span class="font-semibold ${item.sumber==='Metro'?'text-rose-600':'text-amber-600'}">${escapeHtml(item.sumber)}</span></div>
+            <div><span class="text-xs text-slate-400 block">Estimasi Downtime</span> <span class="font-bold text-emerald-600">${escapeHtml(item.downtimeText || item.downtime_formatted || '-')}</span></div>
         </div>
         <div>
             <span class="text-xs text-slate-400 block mb-1">Specific Category</span>
-            <p class="font-semibold text-slate-700">${item.kategori}</p>
+            <p class="font-semibold text-slate-700">${escapeHtml(item.kategori)}</p>
         </div>
         <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
             <span class="text-xs text-slate-400 block mb-1">Catatan Troubleshooting / Root Cause</span>
-            <p class="text-xs text-slate-600 italic">${item.keterangan || 'TIDAK ADA CATATAN TAMBAHAN.'}</p>
+            <p class="text-xs text-slate-600 italic whitespace-pre-wrap">${escapeHtml(item.keterangan || 'TIDAK ADA CATATAN TAMBAHAN.')}</p>
         </div>
         <div class="text-[11px] text-slate-400 pt-1">
-            Input / Updated by: <span class="font-medium text-slate-600">${item.createdBy || 'SYSTEM'}</span>
+            Input / Updated by: <span class="font-medium text-slate-600">${escapeHtml(item.createdBy || 'SYSTEM')}</span>
         </div>
     `;
     document.getElementById('detailModal').classList.remove('hidden');
@@ -526,8 +680,8 @@ function getFilteredIncidents() {
                             (item.kategori || '').toLowerCase().includes(search) ||
                             (item.keterangan || '').toLowerCase().includes(search);
         
-        const isPending = item.status === 'Pending';
-        const matchMonth = !month || (item.tanggal && item.tanggal.startsWith(month)) || isPending;
+        // Filter bulan: jika user memilih bulan spesifik, hanya tampilkan bulan tersebut
+        const matchMonth = !month || (item.tanggal && item.tanggal.startsWith(month));
         
         const matchSumber = sumber === 'All' || item.sumber === sumber;
         const matchStatus = status === 'All' || item.status === status;
@@ -552,9 +706,12 @@ function renderApp() {
     incidents.forEach(item => {
         const textDt = item.downtimeText || item.downtime_formatted;
         if (textDt) {
-            const days = parseInt(textDt.match(/(\d+)\s*Hari/) || [0]);
-            const hours = parseInt(textDt.match(/(\d+)\s*Jam/) || [0]);
-            const mins = parseInt(textDt.match(/(\d+)\s*Menit/) || [0]);
+            const mDays = textDt.match(/(\d+)\s*Hari/);
+            const mHours = textDt.match(/(\d+)\s*Jam/);
+            const mMins = textDt.match(/(\d+)\s*Menit/);
+            const days = mDays ? parseInt(mDays[1], 10) : 0;
+            const hours = mHours ? parseInt(mHours[1], 10) : 0;
+            const mins = mMins ? parseInt(mMins[1], 10) : 0;
             totalDowntimeMinutes += (days * 24 * 60) + (hours * 60) + mins;
         }
     });
@@ -586,22 +743,22 @@ function renderApp() {
 
             const isSameDay = tglMulai === tglSelesai;
             const timeDisplay = isSameDay 
-                ? `${tglMulai} <br> <span class="text-[10px] text-slate-400 font-medium">${jamMulai} - ${jamSelesai}</span>`
-                : `${tglMulai} ${jamMulai} <br> <span class="text-[10px] text-amber-600 font-medium">s/d ${tglSelesai} ${jamSelesai}</span>`;
+                ? `${escapeHtml(tglMulai)} <br> <span class="text-[10px] text-slate-400 font-medium">${escapeHtml(jamMulai)} - ${escapeHtml(jamSelesai)}</span>`
+                : `${escapeHtml(tglMulai)} ${escapeHtml(jamMulai)} <br> <span class="text-[10px] text-amber-600 font-medium">s/d ${escapeHtml(tglSelesai)} ${escapeHtml(jamSelesai)}</span>`;
 
             tr.innerHTML = `
                 <td class="p-3 whitespace-nowrap text-slate-600 font-mono text-xs">${timeDisplay}</td>
                 <td class="p-3">
-                    <div class="font-bold text-slate-700">${item.mitra}</div>
-                    <div class="text-[10px] text-slate-400 font-mono">${item.idPelanggan}</div>
+                    <div class="font-bold text-slate-700">${escapeHtml(item.mitra)}</div>
+                    <div class="text-[10px] text-slate-400 font-mono">${escapeHtml(item.idPelanggan)}</div>
                 </td>
                 <td class="p-3">
                     <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full ${item.sumber === 'Metro' ? 'bg-rose-50 text-rose-600 border border-rose-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}">
-                        ${item.sumber}
+                        ${escapeHtml(item.sumber)}
                     </span>
                 </td>
-                <td class="p-3 text-slate-600 max-w-xs truncate" title="${item.kategori}">${item.kategori}</td>
-                <td class="p-3 font-semibold text-sky-600">${item.downtimeText || item.downtime_formatted || '-'}</td>
+                <td class="p-3 text-slate-600 max-w-xs truncate" title="${escapeHtml(item.kategori)}">${escapeHtml(item.kategori)}</td>
+                <td class="p-3 font-semibold text-sky-600">${escapeHtml(item.downtimeText || item.downtime_formatted || '-')}</td>
                 <td class="p-3">
                     <span class="px-2 py-0.5 text-[11px] font-medium rounded ${item.status === 'Resolved' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-100 text-amber-700 border border-amber-200 animate-pulse'}">
                         ${item.status === 'Pending' ? 'OPEN / Pending' : 'Resolved'}
@@ -609,9 +766,9 @@ function renderApp() {
                 </td>
                 <td class="p-3 text-center">
                     <div class="flex items-center justify-center space-x-1.5">
-                        <button onclick="showDetail(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-sky-600 transition" title="Detail"><i class="fa-solid fa-eye"></i></button>
-                        <button onclick="editRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-amber-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="deleteRecord(${item.id})" class="p-1.5 bg-slate-100 hover:bg-rose-100 rounded text-rose-600 transition" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+                        <button onclick="showDetail('${item.id}')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-sky-600 transition" title="Detail"><i class="fa-solid fa-eye"></i></button>
+                        <button onclick="editRecord('${item.id}')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-amber-600 transition" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="deleteRecord('${item.id}')" class="p-1.5 bg-slate-100 hover:bg-rose-100 rounded text-rose-600 transition" title="Hapus"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </td>
             `;
@@ -692,6 +849,10 @@ function renderCharts() {
 }
 
 function openExportModal() {
+    if (window.innerWidth < 768) {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('-translate-x-full')) sidebar.classList.add('-translate-x-full');
+    }
     const selectMonth = document.getElementById('exportMonthSelect');
     if (!selectMonth) return;
     selectMonth.innerHTML = '<option value="ALL">Semua Bulan (All Time)</option>';
@@ -719,11 +880,15 @@ function confirmExportToExcel() {
 
     let exportData = incidents;
 
-    if (selectedMonth !== 'ALL') exportData = exportData.filter(i => (i.tanggal && i.tanggal.startsWith(selectedMonth)) || i.status === 'Pending');
-    if (selectedStatus !== 'ALL') exportData = exportData.filter(i => i.status === selectedStatus);
+    if (selectedMonth !== 'ALL') {
+        exportData = exportData.filter(i => (i.tanggal && i.tanggal.startsWith(selectedMonth)));
+    }
+    if (selectedStatus !== 'ALL') {
+        exportData = exportData.filter(i => i.status === selectedStatus);
+    }
 
     if (exportData.length === 0) {
-        alert('Tidak ada data yang sesuai dengan kriteria filter.');
+        showToast('Tidak ada data yang sesuai dengan kriteria filter.', 'warning');
         return;
     }
 
@@ -750,15 +915,16 @@ function confirmExportToExcel() {
     const dateStr = selectedMonth === 'ALL' ? 'All_Time' : selectedMonth;
     XLSX.writeFile(workbook, `Report_Gangguan_ISP_Mitra_${dateStr}.xlsx`);
     closeExportModal();
+    showToast("File Excel berhasil didownload!", "success");
 }
 
 async function backupJSON() {
     if (currentUser && currentUser.role !== 'Super Admin') {
-        alert('Akses Ditolak: Hanya Super Admin yang dapat mendownload backup JSON.');
+        showToast('Akses Ditolak: Hanya Super Admin yang dapat mendownload backup JSON.', 'error');
         return;
     }
     if (incidents.length === 0) {
-        alert('Tidak ada data untuk dibackup.');
+        showToast('Tidak ada data untuk dibackup.', 'warning');
         return;
     }
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(incidents, null, 2));
@@ -768,11 +934,12 @@ async function backupJSON() {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    showToast("Backup JSON berhasil didownload!", "success");
 }
 
 async function restoreJSON(e) {
     if (currentUser && currentUser.role !== 'Super Admin') {
-        alert('Akses Ditolak: Hanya Super Admin yang dapat melakukan Restore data.');
+        showToast('Akses Ditolak: Hanya Super Admin yang dapat melakukan Restore data.', 'error');
         return;
     }
     const fileReader = new FileReader();
@@ -780,37 +947,53 @@ async function restoreJSON(e) {
         try {
             const parsedData = JSON.parse(event.target.result);
             if (Array.isArray(parsedData)) {
-                const payload = parsedData.map(item => ({
-                    id: item.id || Date.now() + Math.floor(Math.random() * 1000),
-                    tanggal_kejadian: item.tanggal || item.tanggal_kejadian,
-                    tanggal_solved: item.tanggalSelesai || item.tanggal_solved || null,
-                    nama_mitra: (item.mitra || item.nama_mitra || '').toUpperCase(),
-                    id_pelanggan: (item.idPelanggan || item.id_pelanggan || '').toUpperCase(),
-                    sumber_masalah: item.sumber || item.sumber_masalah,
-                    detail_kategori: (item.kategori || item.detail_kategori || '').toUpperCase(),
-                    jam_kejadian: item.jamMulai || item.jam_kejadian || null,
-                    jam_solved: item.jamSelesai || item.jam_solved || null,
-                    downtime_menit: 0, 
-                    downtime_formatted: item.downtimeText || item.downtime_formatted || '',
-                    keterangan: (item.keterangan || '').toUpperCase(),
-                    status_ticket: item.status || item.status_ticket,
-                    created_by: (item.createdBy || item.created_by || 'SYSTEM').toUpperCase()
-                }));
+                const payload = parsedData.map(item => {
+                    const textDt = item.downtimeText || item.downtime_formatted || '';
+                    let downtimeMenitInt = 0;
+                    if (textDt) {
+                        const mDays = textDt.match(/(\d+)\s*Hari/);
+                        const mHours = textDt.match(/(\d+)\s*Jam/);
+                        const mMins = textDt.match(/(\d+)\s*Menit/);
+                        const days = mDays ? parseInt(mDays[1], 10) : 0;
+                        const hours = mHours ? parseInt(mHours[1], 10) : 0;
+                        const mins = mMins ? parseInt(mMins[1], 10) : 0;
+                        downtimeMenitInt = (days * 24 * 60) + (hours * 60) + mins;
+                    }
 
-                const { data, error } = await supabaseClient
+                    return {
+                        id: item.id || Date.now() + Math.floor(Math.random() * 1000),
+                        tanggal_kejadian: item.tanggal || item.tanggal_kejadian,
+                        tanggal_solved: item.tanggalSelesai || item.tanggal_solved || null,
+                        nama_mitra: (item.mitra || item.nama_mitra || '').toUpperCase(),
+                        id_pelanggan: (item.idPelanggan || item.id_pelanggan || '').toUpperCase(),
+                        sumber_masalah: item.sumber || item.sumber_masalah,
+                        detail_kategori: (item.kategori || item.detail_kategori || '').toUpperCase(),
+                        jam_kejadian: item.jamMulai || item.jam_kejadian || null,
+                        jam_solved: item.jamSelesai || item.jam_solved || null,
+                        downtime_menit: downtimeMenitInt, 
+                        downtime_formatted: textDt,
+                        keterangan: (item.keterangan || '').toUpperCase(),
+                        status_ticket: item.status || item.status_ticket,
+                        created_by: (item.createdBy || item.created_by || 'SYSTEM').toUpperCase()
+                    };
+                });
+
+                const { error } = await supabaseClient
                     .from('tickets')
                     .upsert(payload, { onConflict: 'id' });
 
                 if (error) throw error;
 
-                alert('Data berhasil di-restore ke Supabase!');
+                showToast('Data berhasil di-restore ke Supabase!', 'success');
                 await loadFromStorage(); 
                 renderApp();
             } else {
-                alert('Format file JSON tidak valid.');
+                showToast('Format file JSON tidak valid.', 'error');
             }
         } catch (err) {
-            alert('Gagal membaca file JSON atau gagal restore ke database: ' + err.message);
+            showToast('Gagal membaca file JSON: ' + err.message, 'error');
+        } finally {
+            if (e.target) e.target.value = '';
         }
     };
     if (e.target.files[0]) {
@@ -819,39 +1002,63 @@ async function restoreJSON(e) {
 }
 
 async function loadOperators() {
+    const select = document.getElementById('inputOperator');
+    if (!select) return;
+
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">-- Pilih Nama --</option>';
+
+    let loaded = false;
     try {
         const { data, error } = await supabaseClient
             .from('operators')
             .select('*')
             .order('name', { ascending: true });
 
-        if (error) throw error;
+        if (!error && Array.isArray(data) && data.length > 0) {
+            data.forEach(op => {
+                const option = document.createElement('option');
+                option.value = op.name.toUpperCase();
+                option.textContent = op.name.toUpperCase();
+                select.appendChild(option);
+            });
+            loaded = true;
+        }
+    } catch (err) {
+        console.warn('Gagal memuat operator dari Supabase:', err.message);
+    }
 
-        const select = document.getElementById('inputOperator');
-        if (!select) return;
-        
-        const currentVal = select.value;
-        
-        select.innerHTML = '<option value="">-- Pilih Nama --</option>';
-        
-        data.forEach(op => {
+    // Fallback jika data operators kosong
+    if (!loaded) {
+        USERS.forEach(u => {
             const option = document.createElement('option');
-            option.value = op.name.toUpperCase();
-            option.textContent = op.name.toUpperCase();
+            option.value = u.name.toUpperCase();
+            option.textContent = u.name.toUpperCase();
             select.appendChild(option);
         });
+    }
 
-        if (currentVal) select.value = currentVal;
+    // Pastikan user saat ini ada di pilihan
+    if (currentUser && currentUser.name) {
+        const exists = Array.from(select.options).some(o => o.value === currentUser.name.toUpperCase());
+        if (!exists) {
+            const opt = document.createElement('option');
+            opt.value = currentUser.name.toUpperCase();
+            opt.textContent = currentUser.name.toUpperCase();
+            select.appendChild(opt);
+        }
+    }
 
-    } catch (err) {
-        console.error('Gagal memuat data operator:', err.message);
+    if (currentVal) {
+        select.value = currentVal;
+    } else if (currentUser && currentUser.name) {
+        select.value = currentUser.name.toUpperCase();
     }
 }
 
 // ==========================================
-// MODUL TAMBAHAN: MANAJEMEN CEK COVERAGE METRO (7 VENDOR)
+// MODUL CEK COVERAGE METRO (7 VENDOR)
 // ==========================================
-
 const ISP_VENDORS = [
     "Telkom",
     "XL",
@@ -862,46 +1069,45 @@ const ISP_VENDORS = [
     "iForte"
 ];
 
-function openCoverageModal() {
-    const form = document.getElementById("coverageForm");
-    if (form) form.reset();
-    const editId = document.getElementById("editCoverageId");
-    if (editId) editId.value = "";
-    
-    const modal = document.getElementById("coverageModal");
-    if (modal) modal.classList.remove("hidden");
-}
-
-function closeCoverageModal() {
-    const modal = document.getElementById("coverageModal");
-    if (modal) modal.classList.add("hidden");
-}
-
 async function handleCoverageSubmit(event) {
     event.preventDefault();
 
     const editId = document.getElementById("editCoverageId")?.value;
     const namaMitra = document.getElementById("covMitra")?.value.trim().toUpperCase() || "";
     const kapasitas = document.getElementById("covKapasitas")?.value.trim().toUpperCase() || "";
-    const tikorMitra = document.getElementById("covTikor")?.value.trim().replace(/\s+/g, '') || "";
+    const tikorMitra = document.getElementById("covTikor")?.value.trim() || "";
     const statusReq = document.getElementById("covStatus")?.value || "Menunggu Cek";
     const tikorBts = document.getElementById("covTikorBts")?.value.trim().toUpperCase() || "-";
     const jarakTikor = document.getElementById("covJarak")?.value.trim().toUpperCase() || "-";
 
-    const today = new Date();
-    const dd = String(today.getDate()).padStart(2, '0');
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const yyyy = today.getFullYear();
-    const tglRequest = `${dd}-${mm}-${yyyy}`;
-
     const selectedVendors = Array.from(document.querySelectorAll('input[name="ispVendor"]:checked')).map(el => el.value);
 
     if (selectedVendors.length === 0) {
-        alert("Pilih minimal 1 Vendor ISP Tujuan!");
+        showToast("Pilih minimal 1 Vendor ISP Tujuan!", "warning");
         return;
     }
 
-        const coveragePayload = {
+    // Pertahankan vendor_details dan tgl request saat mode edit
+    let existingVendorDetails = {};
+    let tglRequest = "";
+
+    if (editId) {
+        const existing = coverageRequests.find(c => String(c.id) === String(editId));
+        if (existing) {
+            existingVendorDetails = existing.vendor_details || {};
+            tglRequest = existing.tanggal_request || "";
+        }
+    }
+
+    if (!tglRequest || tglRequest === '-') {
+        const today = new Date();
+        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const yyyy = today.getFullYear();
+        tglRequest = `${dd}-${mm}-${yyyy}`;
+    }
+
+    const coveragePayload = {
         tanggal_request: tglRequest,
         nama_mitra: namaMitra,
         tikor_mitra: tikorMitra,
@@ -910,50 +1116,40 @@ async function handleCoverageSubmit(event) {
         status_req: statusReq,
         tikor_bts_pop: tikorBts,
         jarak_tikor: jarakTikor,
-        vendor_details: {} // TAMBAHKAN INI (objek kosong)
+        vendor_details: existingVendorDetails
     };
-    
-// ==========================================
-// 1. KIRIM KE GOOGLE SHEETS (Fetch No-Cors)
-// ==========================================
-selectedVendors.forEach(async (vendor) => {
-    const url = SHEETS_SCRIPT_URLS[vendor];
-    if (url && !url.includes("URL_EXEC")) {
-        try {
-            const formData = new URLSearchParams();
-            
-            // Siapkan data yang akan dikirim ke Sheet
-            const sheetPayload = {
-                tanggal_request: tglRequest,
-                nama_mitra: vendor.toUpperCase(), // ISI DENGAN NAMA ISP (TELKOM/XL/HSP)
-                tikor_mitra: tikorMitra,
-                kapasitas_bandwidth: kapasitas,
-                status_req: statusReq,
-                tikor_bts_pop: tikorBts,
-                jarak_tikor: jarakTikor
-            };
 
-            for (const key in sheetPayload) {
-                formData.append(key, sheetPayload[key]);
-            }
+    // 1. KIRIM KE GOOGLE SHEETS (Secara paralel via Promise.allSettled)
+    const sheetPromises = selectedVendors.map(vendor => {
+        const url = SHEETS_SCRIPT_URLS[vendor];
+        if (!url || url.includes("URL_EXEC")) return Promise.resolve();
 
-            await fetch(url, {
-                method: 'POST',
-                mode: 'no-cors', // Wajib no-cors
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: formData
-            });
-            console.log(`✅ Terkirim ke Sheet ${vendor}`);
-        } catch (err) {
-            console.error(`❌ Gagal kirim ke ${vendor}:`, err.message);
+        const formData = new URLSearchParams();
+        const sheetPayload = {
+            tanggal_request: tglRequest,
+            nama_mitra: vendor.toUpperCase(),
+            tikor_mitra: tikorMitra,
+            kapasitas_bandwidth: kapasitas,
+            status_req: statusReq,
+            tikor_bts_pop: tikorBts,
+            jarak_tikor: jarakTikor
+        };
+
+        for (const key in sheetPayload) {
+            formData.append(key, sheetPayload[key]);
         }
-    }
-});
-    // ==========================================
-    // 2. SIMPAN KE SUPABASE (DIAKTIFKAN KEMBALI)
-    // ==========================================
+
+        return fetch(url, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData
+        }).catch(err => console.warn(`Gagal kirim ke ${vendor}:`, err.message));
+    });
+
+    await Promise.allSettled(sheetPromises);
+
+    // 2. SIMPAN KE SUPABASE
     try {
         if (editId) {
             const { error } = await supabaseClient.from('coverage_requests').update(coveragePayload).eq('id', editId);
@@ -962,26 +1158,18 @@ selectedVendors.forEach(async (vendor) => {
             const { error } = await supabaseClient.from('coverage_requests').insert([coveragePayload]);
             if (error) throw error;
         }
-        console.log("✅ Berhasil simpan ke Supabase.");
+        showToast("Data request coverage berhasil disimpan!", "success");
     } catch (err) {
-        console.error("❌ Gagal simpan ke Supabase:", err.message);
+        console.error("Gagal simpan ke Supabase:", err.message);
+        showToast("Gagal simpan ke database: " + err.message, "error");
     }
 
-    // ==========================================
-    // 3. SELESAI
-    // ==========================================
-    alert("Selesai! Data tersimpan di Web dan dikirim ke Sheets.");
     closeCoverageModal();
-    
-    // Refresh tabel web
-    try {
-        await loadCoverageFromStorage();
-        renderCoverageTable();
-    } catch (e) {
-        console.warn("Gagal refresh tabel.");
-    }
+    await loadCoverageFromStorage();
+    renderCoverageTable();
 }
-async function renderCoverageTable() {
+
+function renderCoverageTable() {
     const tbody = document.getElementById("coverageTableBody");
     if (!tbody) return;
 
@@ -994,7 +1182,6 @@ async function renderCoverageTable() {
         const matchSearch = (item.nama_mitra || "").toLowerCase().includes(searchVal) || 
                             (item.tikor_mitra || "").toLowerCase().includes(searchVal);
         
-        // Filter berdasarkan vendor yang dipilih
         let matchVendor = true;
         if (vendorVal !== "All") {
             matchVendor = item.vendors && item.vendors.includes(vendorVal);
@@ -1010,55 +1197,62 @@ async function renderCoverageTable() {
     }
 
     filteredList.forEach((item, index) => {
-        // Ambil data vendor_details
         let vendor_details = item.vendor_details || {};
-if (typeof vendor_details === 'string') {
-    try { vendor_details = JSON.parse(vendor_details); } catch(e){ vendor_details = {}; }
-}
+        if (typeof vendor_details === 'string') {
+            try { vendor_details = JSON.parse(vendor_details); } catch (e) { vendor_details = {}; }
+        }
 
-        // Buat Badge HTML untuk masing-masing ISP
         let badgesHtml = "";
         const vendorsList = item.vendors || [];
         
         vendorsList.forEach(v => {
-                        // Bersihkan nama vendor di web (hilangkan spasi)
             const vendorKey = v.replace(/[^a-zA-Z]/g, '').toUpperCase();
             const data = vendor_details[vendorKey] || { status: 'Menunggu Cek', bts: '-', jarak: '-' };
-            let badgeColor = "bg-slate-100 text-slate-600 border-slate-200"; // Default
+            let badgeColor = "bg-slate-100 text-slate-600 border-slate-200";
             if (data.status === 'Cover') badgeColor = "bg-emerald-100 text-emerald-700 border-emerald-200";
             if (data.status === 'Not Cover') badgeColor = "bg-rose-100 text-rose-700 border-rose-200";
 
-                        badgesHtml += `
+            const isClickableBts = data.bts && data.bts !== '-';
+
+            badgesHtml += `
                 <div class="flex items-center space-x-2 bg-white border border-slate-200 p-1.5 rounded mb-1 text-[11px] shadow-sm">
-                    <span class="font-bold w-16 text-slate-700">${v}</span>
-                    <span class="px-1.5 py-0.5 rounded border ${badgeColor} font-semibold w-24 text-center">${data.status}</span>
-                    <span class="text-sky-600 hover:underline cursor-pointer truncate w-32" title="Klik untuk buka Maps" onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(data.bts)}', '_blank')">${data.bts}</span>
-                    <span class="text-slate-500 w-16">${data.jarak}</span>
+                    <span class="font-bold w-16 text-slate-700">${escapeHtml(v)}</span>
+                    <span class="px-1.5 py-0.5 rounded border ${badgeColor} font-semibold w-24 text-center">${escapeHtml(data.status)}</span>
+                    <span class="${isClickableBts ? 'text-sky-600 hover:underline cursor-pointer' : 'text-slate-400'} truncate w-32" 
+                          title="${isClickableBts ? 'Klik untuk buka Maps' : ''}" 
+                          ${isClickableBts ? `onclick="openMapLink('${escapeHtml(data.bts)}')"` : ''}>
+                          ${escapeHtml(data.bts)}
+                    </span>
+                    <span class="text-slate-500 w-16">${escapeHtml(data.jarak)}</span>
                 </div>
             `;
         });
+
+        const isClickableTikor = item.tikor_mitra && item.tikor_mitra !== '-';
 
         const tr = document.createElement("tr");
         tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
         tr.innerHTML = `
             <td class="p-3 font-medium text-slate-600">${index + 1}</td>
-            <td class="p-3 font-mono text-xs">${item.tanggal_request || '-'}</td>
-            <td class="p-3 font-semibold text-slate-800">${item.nama_mitra || '-'}</td>
-            <td class="p-3 text-sky-600 hover:underline cursor-pointer font-mono text-xs" onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(item.tikor_mitra)}', '_blank')">
-                ${item.tikor_mitra || '-'}
+            <td class="p-3 font-mono text-xs">${escapeHtml(item.tanggal_request || '-')}</td>
+            <td class="p-3 font-semibold text-slate-800">${escapeHtml(item.nama_mitra || '-')}</td>
+            <td class="p-3 ${isClickableTikor ? 'text-sky-600 hover:underline cursor-pointer' : 'text-slate-400'} font-mono text-xs" 
+                ${isClickableTikor ? `onclick="openMapLink('${escapeHtml(item.tikor_mitra)}')"` : ''}>
+                ${escapeHtml(item.tikor_mitra || '-')}
             </td>
-            <td class="p-3 font-medium">${item.kapasitas_bandwidth || '-'}</td>
+            <td class="p-3 font-medium">${escapeHtml(item.kapasitas_bandwidth || '-')}</td>
             <td class="p-3">${badgesHtml || '-'}</td>
             <td class="p-3 text-center space-x-1 align-top">
-                <button onclick="editCoverage(${item.id})" class="text-sky-600 hover:text-sky-800 p-1" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
-                <button onclick="deleteCoverage(${item.id})" class="text-rose-600 hover:text-rose-800 p-1" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+                <button onclick="editCoverage('${item.id}')" class="text-sky-600 hover:text-sky-800 p-1" title="Edit"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button onclick="deleteCoverage('${item.id}')" class="text-rose-600 hover:text-rose-800 p-1" title="Hapus"><i class="fa-solid fa-trash"></i></button>
             </td>
         `;
         tbody.appendChild(tr);
     });
 }
+
 function editCoverage(id) {
-    const item = coverageRequests.find(c => c.id == id);
+    const item = coverageRequests.find(c => String(c.id) === String(id));
     if (!item) return;
 
     document.getElementById('editCoverageId').value = item.id;
@@ -1083,17 +1277,18 @@ async function deleteCoverage(id) {
             const { error } = await supabaseClient.from('coverage_requests').delete().eq('id', id);
             if (error) throw error;
             
-            coverageRequests = coverageRequests.filter(i => i.id !== id);
+            coverageRequests = coverageRequests.filter(i => String(i.id) !== String(id));
             renderCoverageTable();
-            alert("Request coverage berhasil dihapus.");
+            showToast("Request coverage berhasil dihapus.", "success");
         } catch (err) {
-            alert("Gagal menghapus data dari database: " + err.message);
+            showToast("Gagal menghapus data dari database: " + err.message, "error");
         }
     }
-}// ==========================================
+}
+
+// ==========================================
 // SINKRONISASI DUA ARAH: GOOGLE SHEETS ↔ SUPABASE
 // ==========================================
-
 let sheetsSyncInterval = null;
 let isSyncing = false;
 
@@ -1102,18 +1297,33 @@ async function syncFromSheets() {
     isSyncing = true;
 
     try {
-        const allSheetsData = [];
-        
-        for (const url of SHEETS_READ_URLS) {
+        // Ambil data dari semua vendor secara paralel dengan timeout guard 7 detik
+        const fetchPromises = SHEETS_READ_URLS.map(async (url) => {
             try {
-                const res = await fetch(url, { method: 'GET', cache: 'no-store' });
-                if (!res.ok) continue;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 7000);
+                const res = await fetch(url, { method: 'GET', cache: 'no-store', signal: controller.signal });
+                clearTimeout(timeoutId);
+                if (!res.ok) return [];
                 const json = await res.json();
                 if (json.status === 'ok' && Array.isArray(json.data)) {
-                    json.data.forEach(row => allSheetsData.push(row));
+                    return json.data;
                 }
-            } catch (e) {}
-        }
+            } catch (e) {
+                return [];
+            }
+            return [];
+        });
+
+        const settled = await Promise.allSettled(fetchPromises);
+        const allSheetsData = [];
+        settled.forEach(r => {
+            if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+                r.value.forEach(row => allSheetsData.push(row));
+            }
+        });
+
+        if (allSheetsData.length === 0) return;
 
         const { data: existing, error: errExist } = await supabaseClient
             .from('coverage_requests')
@@ -1123,7 +1333,7 @@ async function syncFromSheets() {
 
         const existingMap = new Map();
         (existing || []).forEach(e => {
-            if(e.tikor_mitra) existingMap.set(e.tikor_mitra.replace(/\s+/g, ''), e);
+            if (e.tikor_mitra) existingMap.set(e.tikor_mitra.replace(/\s+/g, ''), e);
         });
 
         let adaPerubahan = false;
@@ -1137,22 +1347,24 @@ async function syncFromSheets() {
             if (existingRow) {
                 let vendor_details = existingRow.vendor_details || {};
                 if (typeof vendor_details === 'string') {
-                    try { vendor_details = JSON.parse(vendor_details); } catch(e){ vendor_details = {}; }
+                    try { vendor_details = JSON.parse(vendor_details); } catch (e) { vendor_details = {}; }
                 }
 
                 const namaVendor = row.nama_mitra.replace(/[^a-zA-Z]/g, '').toUpperCase();
                 const statusBaru = row.status_req || 'Menunggu Cek';
+                const btsBaru = row.tikor_bts_pop || '-';
+                const jarakBaru = row.jarak_tikor || '-';
                 
                 const oldVendorData = vendor_details[namaVendor] || {};
                 
                 if (oldVendorData.status !== statusBaru || 
-                    oldVendorData.bts !== row.tikor_bts_pop || 
-                    oldVendorData.jarak !== row.jarak_tikor) {
+                    oldVendorData.bts !== btsBaru || 
+                    oldVendorData.jarak !== jarakBaru) {
                     
                     vendor_details[namaVendor] = {
                         status: statusBaru,
-                        bts: row.tikor_bts_pop || '-',
-                        jarak: row.jarak_tikor || '-'
+                        bts: btsBaru,
+                        jarak: jarakBaru
                     };
 
                     const { error: errUpdate } = await supabaseClient
@@ -1164,7 +1376,6 @@ async function syncFromSheets() {
                         console.log(`✅ Sinkron DB: ${namaVendor} -> ${statusBaru}`);
                         adaPerubahan = true;
                         
-                        // KUNCI ANTI-GAGAL: Langsung update data di memori lokal web!
                         if (coverageRequests) {
                             const localRow = coverageRequests.find(c => String(c.id) === String(existingRow.id));
                             if (localRow) {
@@ -1176,9 +1387,7 @@ async function syncFromSheets() {
             }
         }
 
-        // Jika ada perubahan, gambar ulang layar dari memori lokal (TIDAK PERLU FETCH ULANG)
         if (adaPerubahan) {
-            console.log("🔄 Menggambar ulang tabel dari memori lokal...");
             renderCoverageTable(); 
         }
 
@@ -1188,14 +1397,13 @@ async function syncFromSheets() {
         isSyncing = false;
     }
 }
-// Fungsi untuk memulai pengecekan otomatis (polling) tiap 30 detik
+
 function startSheetsSync() {
     stopSheetsSync();
-    syncFromSheets(); // Tarik data langsung saat halaman dibuka
+    syncFromSheets();
     sheetsSyncInterval = setInterval(syncFromSheets, CONFIG.SHEETS_SYNC_INTERVAL_MS || 30000);
 }
 
-// Fungsi untuk menghentikan pengecekan otomatis
 function stopSheetsSync() {
     if (sheetsSyncInterval) {
         clearInterval(sheetsSyncInterval);
