@@ -75,3 +75,42 @@ input[type="month"]::-webkit-calendar-picker-indicator:hover {
 #incidentForm textarea {
     text-transform: uppercase;
 }
+
+/* ==========================================
+   TOAST NOTIFICATION STYLES
+   ========================================== */
+#toast-container {
+    position: fixed;
+    top: 1.25rem;
+    right: 1.25rem;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+    max-width: 90vw;
+    width: 360px;
+}
+
+.toast-item {
+    pointer-events: auto;
+    animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+.toast-item.toast-fadeout {
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: all 0.25s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
