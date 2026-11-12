@@ -344,7 +344,7 @@
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Kejadian</label>
-                    <input type="date" id="inputTanggal" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    <input type="date" id="inputTanggal" required oninput="calculateDowntime()" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Nama Mitra / Client</label>
@@ -371,15 +371,15 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Jam Kejadian (Start)</label>
-                    <input type="time" id="inputJamMulai" required onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    <input type="time" id="inputJamMulai" required oninput="calculateDowntime()" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Tanggal Selesai (End)</label>
-                    <input type="date" id="inputTanggalSelesai" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    <input type="date" id="inputTanggalSelesai" oninput="calculateDowntime()" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Jam Solved (End)</label>
-                    <input type="time" id="inputJamSelesai" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
+                    <input type="time" id="inputJamSelesai" oninput="calculateDowntime()" onchange="calculateDowntime()" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700">
                 </div>
 
                 <div>
