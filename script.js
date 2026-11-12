@@ -80,9 +80,67 @@ function showToast(message, type = 'info') {
     }, 3500);
 }
 
-function normalizeTime(timeStr) {
+function parseTimeToHHMM(timeStr) {
     if (!timeStr) return '';
-    return timeStr.trim().replace('.', ':');
+    let str = String(timeStr).trim();
+
+    // Jika ada format ISO atau datetime (e.g. "2026-11-11T13:46:00" atau "2026-11-11 13:46:00")
+    if (str.includes('T')) {
+        str = str.split('T')[1];
+    } else if (str.includes(' ') && (str.includes('-') || str.includes('/'))) {
+        str = str.split(' ')[1];
+    }
+
+    // Deteksi AM / PM (misal "01:46 PM")
+    const isPM = /pm/i.test(str);
+    const isAM = /am/i.test(str);
+    str = str.replace(/am|pm/gi, '').trim();
+
+    // Ganti titik dengan titik dua (misal "13.46" -> "13:46")
+    str = str.replace(/\./g, ':');
+
+    // Ambil jam dan menit
+    const parts = str.split(':');
+    if (parts.length >= 2) {
+        let hours = parseInt(parts[0], 10);
+        let minutes = parseInt(parts[1], 10);
+        if (isNaN(hours) || isNaN(minutes)) return '';
+
+        if (isPM && hours < 12) {
+            hours += 12;
+        } else if (isAM && hours === 12) {
+            hours = 0;
+        }
+
+        const hh = String(hours).padStart(2, '0');
+        const mm = String(minutes).padStart(2, '0');
+        return `${hh}:${mm}`;
+    }
+
+    return '';
+}
+
+function parseDateToYYYYMMDD(dateStr) {
+    if (!dateStr) return '';
+    let str = String(dateStr).trim();
+    if (str.includes('T')) {
+        str = str.split('T')[0];
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        return str;
+    }
+    const dmyMatch = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+    if (dmyMatch) {
+        const d = String(dmyMatch[1]).padStart(2, '0');
+        const m = String(dmyMatch[2]).padStart(2, '0');
+        const y = dmyMatch[3];
+        return `${y}-${m}-${d}`;
+    }
+    return str;
+}
+
+function normalizeTime(timeStr) {
+    return parseTimeToHHMM(timeStr);
 }
 
 // ==========================================
@@ -273,14 +331,14 @@ async function loadFromStorage() {
 
         incidents = (data || []).map(item => ({
             id: item.id,
-            tanggal: item.tanggal_kejadian,
-            tanggalSelesai: item.tanggal_solved,
+            tanggal: parseDateToYYYYMMDD(item.tanggal_kejadian) || item.tanggal_kejadian,
+            tanggalSelesai: parseDateToYYYYMMDD(item.tanggal_solved) || item.tanggal_solved,
             mitra: item.nama_mitra,
             idPelanggan: item.id_pelanggan,
             sumber: item.sumber_masalah,
             kategori: item.detail_kategori,
-            jamMulai: item.jam_kejadian,
-            jamSelesai: item.jam_solved,
+            jamMulai: parseTimeToHHMM(item.jam_kejadian) || item.jam_kejadian,
+            jamSelesai: parseTimeToHHMM(item.jam_solved) || item.jam_solved,
             downtime_formatted: item.downtime_formatted,
             downtimeText: item.downtime_formatted,
             keterangan: item.keterangan,
@@ -418,10 +476,14 @@ function handleStatusChange() {
     const jamSelesai = document.getElementById('inputJamSelesai');
     
     if (status === 'Resolved') {
-        if (!tanggalSelesai.value) tanggalSelesai.value = document.getElementById('inputTanggal').value || CONFIG.DEFAULT_DATE;
+        if (!tanggalSelesai.value) {
+            tanggalSelesai.value = document.getElementById('inputTanggal').value || CONFIG.DEFAULT_DATE;
+        }
         if (!jamSelesai.value) {
             const now = new Date();
-            jamSelesai.value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const hh = String(now.getHours()).padStart(2, '0');
+            const mm = String(now.getMinutes()).padStart(2, '0');
+            jamSelesai.value = `${hh}:${mm}`;
         }
         calculateDowntime();
     } else {
@@ -431,43 +493,62 @@ function handleStatusChange() {
 }
 
 function calculateDowntime() {
-    const tglMulai = document.getElementById('inputTanggal').value;
-    const jamMulai = normalizeTime(document.getElementById('inputJamMulai').value);
-    const tglSelesai = document.getElementById('inputTanggalSelesai').value;
-    const jamSelesai = normalizeTime(document.getElementById('inputJamSelesai').value);
+    const rawTglMulai = document.getElementById('inputTanggal')?.value;
+    const rawJamMulai = document.getElementById('inputJamMulai')?.value;
+    const rawTglSelesai = document.getElementById('inputTanggalSelesai')?.value;
+    const rawJamSelesai = document.getElementById('inputJamSelesai')?.value;
     const downtimeInput = document.getElementById('inputDowntime');
+    if (!downtimeInput) return;
 
-    if (tglMulai && jamMulai && tglSelesai && jamSelesai) {
-        const startH = jamMulai.length === 5 ? jamMulai : jamMulai.padStart(5, '0');
-        const endH = jamSelesai.length === 5 ? jamSelesai : jamSelesai.padStart(5, '0');
-        
-        const startDateTime = new Date(`${tglMulai}T${startH}:00`);
-        const endDateTime = new Date(`${tglSelesai}T${endH}:00`);
+    const tglMulai = parseDateToYYYYMMDD(rawTglMulai);
+    const tglSelesai = parseDateToYYYYMMDD(rawTglSelesai);
+    const jamMulai = parseTimeToHHMM(rawJamMulai);
+    const jamSelesai = parseTimeToHHMM(rawJamSelesai);
 
-        if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
-            downtimeInput.value = "Error: Format jam/tanggal tidak valid!";
-            return;
-        }
+    // Reset warna teks
+    downtimeInput.classList.remove('text-rose-600');
+    downtimeInput.classList.add('text-emerald-600');
 
-        if (endDateTime < startDateTime) {
-            downtimeInput.value = "Error: Waktu selesai lebih awal!";
-            return;
-        }
-
-        const diffMs = endDateTime - startDateTime;
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-        let hasil = [];
-        if (diffDays > 0) hasil.push(`${diffDays} Hari`);
-        if (diffHours > 0) hasil.push(`${diffHours} Jam`);
-        if (diffMinutes > 0) hasil.push(`${diffMinutes} Menit`);
-        
-        downtimeInput.value = hasil.length === 0 ? "0 Menit" : hasil.join(" ");
-    } else {
+    // Jika waktu mulai belum diisi
+    if (!tglMulai || !jamMulai) {
         downtimeInput.value = '';
+        return;
     }
+
+    // Jika waktu selesai belum diisi (misal status tiket masih Pending / Open)
+    if (!tglSelesai || !jamSelesai) {
+        downtimeInput.value = '';
+        return;
+    }
+
+    const startDateTime = new Date(`${tglMulai}T${jamMulai}:00`);
+    const endDateTime = new Date(`${tglSelesai}T${jamSelesai}:00`);
+
+    if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+        downtimeInput.classList.remove('text-emerald-600');
+        downtimeInput.classList.add('text-rose-600');
+        downtimeInput.value = "Error: Format jam/tanggal tidak valid!";
+        return;
+    }
+
+    if (endDateTime < startDateTime) {
+        downtimeInput.classList.remove('text-emerald-600');
+        downtimeInput.classList.add('text-rose-600');
+        downtimeInput.value = "Error: Waktu selesai lebih awal!";
+        return;
+    }
+
+    const diffMs = endDateTime - startDateTime;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    let hasil = [];
+    if (diffDays > 0) hasil.push(`${diffDays} Hari`);
+    if (diffHours > 0) hasil.push(`${diffHours} Jam`);
+    if (diffMinutes > 0) hasil.push(`${diffMinutes} Menit`);
+    
+    downtimeInput.value = hasil.length === 0 ? "0 Menit" : hasil.join(" ");
 }
 
 async function handleFormSubmit(e) {
@@ -477,9 +558,10 @@ async function handleFormSubmit(e) {
     const sumberValue = document.getElementById('inputSumber').value;
     let kategoriValue = document.getElementById('inputKategori').value;
     const statusValue = document.getElementById('inputStatus').value;
-    const jamMulaiValue = normalizeTime(document.getElementById('inputJamMulai').value);
-    const jamSelesaiValue = normalizeTime(document.getElementById('inputJamSelesai').value);
-    const tanggalSelesaiValue = document.getElementById('inputTanggalSelesai').value;
+    const jamMulaiValue = parseTimeToHHMM(document.getElementById('inputJamMulai').value);
+    const jamSelesaiValue = parseTimeToHHMM(document.getElementById('inputJamSelesai').value);
+    const tanggalMulaiValue = parseDateToYYYYMMDD(document.getElementById('inputTanggal').value);
+    const tanggalSelesaiValue = parseDateToYYYYMMDD(document.getElementById('inputTanggalSelesai').value);
 
     if (statusValue === 'Resolved' && (!jamSelesaiValue || !tanggalSelesaiValue)) {
         showToast("Untuk menutup tiket (Resolved), Tanggal Selesai dan Jam Solved wajib diisi!", "warning");
@@ -503,7 +585,7 @@ async function handleFormSubmit(e) {
     }
 
     const supabasePayload = {
-        tanggal_kejadian: document.getElementById('inputTanggal').value,
+        tanggal_kejadian: tanggalMulaiValue,
         tanggal_solved: tanggalSelesaiValue || null,
         nama_mitra: document.getElementById('inputMitra').value.trim().toUpperCase(),
         id_pelanggan: document.getElementById('inputIdPelanggan').value.trim().toUpperCase(),
@@ -592,22 +674,35 @@ function editRecord(id) {
 
     const item = incidents[index];
     document.getElementById('editIndex').value = index;
-    document.getElementById('inputTanggal').value = item.tanggal;
-    document.getElementById('inputTanggalSelesai').value = item.tanggalSelesai || item.tanggal;
-    document.getElementById('inputMitra').value = item.mitra;
-    document.getElementById('inputIdPelanggan').value = item.idPelanggan;
-    document.getElementById('inputSumber').value = item.sumber;
+
+    const cleanTglMulai = parseDateToYYYYMMDD(item.tanggal) || CONFIG.DEFAULT_DATE;
+    const cleanTglSelesai = parseDateToYYYYMMDD(item.tanggalSelesai) || cleanTglMulai;
+    const cleanJamMulai = parseTimeToHHMM(item.jamMulai);
+    const cleanJamSelesai = parseTimeToHHMM(item.jamSelesai);
+
+    document.getElementById('inputTanggal').value = cleanTglMulai;
+    document.getElementById('inputTanggalSelesai').value = cleanTglSelesai;
+    document.getElementById('inputMitra').value = item.mitra || '';
+    document.getElementById('inputIdPelanggan').value = item.idPelanggan || '';
+    document.getElementById('inputSumber').value = item.sumber || '';
     
     updateSubCategoryOptions(item.kategori);
     
-    document.getElementById('inputJamMulai').value = item.jamMulai || '';
-    document.getElementById('inputJamSelesai').value = item.jamSelesai || '';
-    document.getElementById('inputDowntime').value = item.downtimeText || item.downtime_formatted || '';
-    document.getElementById('inputKeterangan').value = item.keterangan;
-    document.getElementById('inputStatus').value = item.status;
+    document.getElementById('inputJamMulai').value = cleanJamMulai;
+    document.getElementById('inputJamSelesai').value = cleanJamSelesai;
+    document.getElementById('inputKeterangan').value = item.keterangan || '';
+    document.getElementById('inputStatus').value = item.status || 'Pending';
 
     if (document.getElementById('inputOperator')) {
         document.getElementById('inputOperator').value = (item.createdBy || '').toUpperCase();
+    }
+
+    calculateDowntime();
+
+    // Jika downtime kosong (misal tiket masih pending), tampilkan nilai yang tersimpan sebelumnya jika ada
+    const dtInput = document.getElementById('inputDowntime');
+    if (dtInput && !dtInput.value && (item.downtimeText || item.downtime_formatted)) {
+        dtInput.value = item.downtimeText || item.downtime_formatted;
     }
 
     document.getElementById('btnSubmit').innerHTML = '<i class="fa-solid fa-pen-to-square mr-2"></i> Update Report';
