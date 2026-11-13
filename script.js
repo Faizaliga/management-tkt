@@ -124,17 +124,25 @@ function parseDateToYYYYMMDD(dateStr) {
     if (!dateStr) return '';
     let str = String(dateStr).trim();
     if (str.includes('T')) {
-        str = str.split('T')[0];
+        str = str.split('T')[0].trim();
+    } else if (str.includes(' ') && (str.includes('-') || str.includes('/'))) {
+        str = str.split(' ')[0].trim();
     }
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
         return str;
     }
     const dmyMatch = str.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
     if (dmyMatch) {
-        const d = String(dmyMatch[1]).padStart(2, '0');
-        const m = String(dmyMatch[2]).padStart(2, '0');
+        let p1 = parseInt(dmyMatch[1], 10);
+        let p2 = parseInt(dmyMatch[2], 10);
         const y = dmyMatch[3];
-        return `${y}-${m}-${d}`;
+        let d = p1;
+        let m = p2;
+        if (p2 > 12 && p1 <= 12) {
+            d = p2;
+            m = p1;
+        }
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     }
     return str;
 }
@@ -161,12 +169,13 @@ document.addEventListener('keydown', (e) => {
         closeCoverageModal();
         closeModal();
         closeExportModal();
+        closeVoiceHelpModal();
     }
 });
 
 // Tutup modal saat klik area luar (backdrop)
 document.addEventListener('click', (e) => {
-    const modalIds = ['incidentModal', 'coverageModal', 'detailModal', 'exportModal'];
+    const modalIds = ['incidentModal', 'coverageModal', 'detailModal', 'exportModal', 'voiceHelpModal'];
     modalIds.forEach(id => {
         const el = document.getElementById(id);
         if (el && e.target === el && !el.classList.contains('hidden')) {
@@ -174,6 +183,7 @@ document.addEventListener('click', (e) => {
             else if (id === 'coverageModal') closeCoverageModal();
             else if (id === 'detailModal') closeModal();
             else if (id === 'exportModal') closeExportModal();
+            else if (id === 'voiceHelpModal') closeVoiceHelpModal();
         }
     });
 });
@@ -293,6 +303,9 @@ function openIncidentModal(isEdit = false) {
 }
 
 function closeIncidentModal() {
+    waitingForOperator = false;
+    currentDictationTarget = null;
+    stopFormVoiceAssistant();
     const modal = document.getElementById('incidentModal');
     if (modal) modal.classList.add('hidden');
     resetForm();
@@ -308,6 +321,7 @@ function openCoverageModal() {
 }
 
 function closeCoverageModal() {
+    stopFormVoiceAssistant();
     const modal = document.getElementById('coverageModal');
     if (modal) modal.classList.add('hidden');
     const form = document.getElementById('coverageForm');
@@ -493,36 +507,71 @@ function handleStatusChange() {
 }
 
 function calculateDowntime() {
-    const rawTglMulai = document.getElementById('inputTanggal')?.value;
+    let rawTglMulai = document.getElementById('inputTanggal')?.value;
     const rawJamMulai = document.getElementById('inputJamMulai')?.value;
-    const rawTglSelesai = document.getElementById('inputTanggalSelesai')?.value;
+    let rawTglSelesai = document.getElementById('inputTanggalSelesai')?.value;
     const rawJamSelesai = document.getElementById('inputJamSelesai')?.value;
     const downtimeInput = document.getElementById('inputDowntime');
     if (!downtimeInput) return;
+
+    // Reset warna teks
+    downtimeInput.classList.remove('text-rose-600');
+    downtimeInput.classList.add('text-emerald-600');
+
+    // Jika rawTglMulai kosong tapi rawJamMulai ada, isi otomatis tanggal default hari ini
+    if (!rawTglMulai && rawJamMulai) {
+        rawTglMulai = CONFIG.DEFAULT_DATE;
+        const tglMulaiEl = document.getElementById('inputTanggal');
+        if (tglMulaiEl) tglMulaiEl.value = CONFIG.DEFAULT_DATE;
+    }
+
+    // Jika rawTglSelesai kosong tetapi jam selesai terisi, gunakan tanggal mulai secara otomatis
+    if (!rawTglSelesai && rawJamSelesai && rawTglMulai) {
+        rawTglSelesai = rawTglMulai;
+        const tglSelesaiEl = document.getElementById('inputTanggalSelesai');
+        if (tglSelesaiEl) tglSelesaiEl.value = rawTglMulai;
+    }
 
     const tglMulai = parseDateToYYYYMMDD(rawTglMulai);
     const tglSelesai = parseDateToYYYYMMDD(rawTglSelesai);
     const jamMulai = parseTimeToHHMM(rawJamMulai);
     const jamSelesai = parseTimeToHHMM(rawJamSelesai);
 
-    // Reset warna teks
-    downtimeInput.classList.remove('text-rose-600');
-    downtimeInput.classList.add('text-emerald-600');
-
-    // Jika waktu mulai belum diisi
-    if (!tglMulai || !jamMulai) {
+    // Jika waktu mulai atau waktu selesai belum diisi, kosongkan estimasi downtime
+    if (!tglMulai || !jamMulai || !tglSelesai || !jamSelesai) {
         downtimeInput.value = '';
         return;
     }
 
-    // Jika waktu selesai belum diisi (misal status tiket masih Pending / Open)
-    if (!tglSelesai || !jamSelesai) {
-        downtimeInput.value = '';
+    const startParts = tglMulai.split('-');
+    const startTimeParts = jamMulai.split(':');
+    const endParts = tglSelesai.split('-');
+    const endTimeParts = jamSelesai.split(':');
+
+    if (startParts.length < 3 || startTimeParts.length < 2 || endParts.length < 3 || endTimeParts.length < 2) {
+        downtimeInput.classList.remove('text-emerald-600');
+        downtimeInput.classList.add('text-rose-600');
+        downtimeInput.value = "Error: Format jam/tanggal tidak valid!";
         return;
     }
 
-    const startDateTime = new Date(`${tglMulai}T${jamMulai}:00`);
-    const endDateTime = new Date(`${tglSelesai}T${jamSelesai}:00`);
+    const startDateTime = new Date(
+        parseInt(startParts[0], 10),
+        parseInt(startParts[1], 10) - 1,
+        parseInt(startParts[2], 10),
+        parseInt(startTimeParts[0], 10),
+        parseInt(startTimeParts[1], 10),
+        0
+    );
+
+    const endDateTime = new Date(
+        parseInt(endParts[0], 10),
+        parseInt(endParts[1], 10) - 1,
+        parseInt(endParts[2], 10),
+        parseInt(endTimeParts[0], 10),
+        parseInt(endTimeParts[1], 10),
+        0
+    );
 
     if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
         downtimeInput.classList.remove('text-emerald-600');
@@ -1505,3 +1554,1057 @@ function stopSheetsSync() {
         sheetsSyncInterval = null;
     }
 }
+
+// ==========================================
+// MODUL VOICE ASSISTANT & SPEECH RECOGNITION
+// ==========================================
+let speechRecognitionInstance = null;
+let isVoiceListening = false;
+let isFormVoiceActive = false;
+let currentDictationTarget = null;
+
+// Helper: konversi kata angka bahasa Indonesia ke angka numerik
+function replaceIndonesianNumberWords(str) {
+    if (!str) return '';
+    const map = [
+        { word: 'dua puluh', num: '20' },
+        { word: 'tiga puluh', num: '30' },
+        { word: 'empat puluh', num: '40' },
+        { word: 'lima puluh', num: '50' },
+        { word: 'sebelas', num: '11' },
+        { word: 'dua belas', num: '12' },
+        { word: 'tiga belas', num: '13' },
+        { word: 'empat belas', num: '14' },
+        { word: 'lima belas', num: '15' },
+        { word: 'enam belas', num: '16' },
+        { word: 'tujuh belas', num: '17' },
+        { word: 'delapan belas', num: '18' },
+        { word: 'sembilan belas', num: '19' },
+        { word: 'sepuluh', num: '10' },
+        { word: 'nol', num: '0' },
+        { word: 'satu', num: '1' },
+        { word: 'dua', num: '2' },
+        { word: 'tiga', num: '3' },
+        { word: 'empat', num: '4' },
+        { word: 'lima', num: '5' },
+        { word: 'enam', num: '6' },
+        { word: 'tujuh', num: '7' },
+        { word: 'delapan', num: '8' },
+        { word: 'sembilan', num: '9' }
+    ];
+    let res = str.toLowerCase();
+    for (let item of map) {
+        const regex = new RegExp('\\b' + item.word + '\\b', 'g');
+        res = res.replace(regex, item.num);
+    }
+    return res;
+}
+
+// Helper: parsing waktu ucapan ke format "HH:MM"
+function parseSpokenTimeToHHMM(str) {
+    if (!str) return null;
+    let s = String(str).toLowerCase().trim().replace(/[.,!?:;]+$/, '').trim();
+
+    // Jika kata "sekarang"
+    if (s.includes('sekarang')) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        return `${hh}:${mm}`;
+    }
+
+    const isMalam = s.includes('malam');
+    const isSore = s.includes('sore');
+    const isSiang = s.includes('siang');
+    const isPagi = s.includes('pagi');
+    const isPM = s.includes('pm') || isSiang || isSore || isMalam;
+    const isAM = s.includes('am') || isPagi;
+
+    // Deteksi ucapan "setengah [X]" (misal: "setengah dua" -> 01:30 atau 13:30)
+    const setengahMatch = s.match(/setengah\s+(satu|dua|tiga|empat|lima|enam|tujuh|delapan|sembilan|sepuluh|sebelas|dua\s+belas|\d{1,2})/i);
+    if (setengahMatch) {
+        const targetWord = replaceIndonesianNumberWords(setengahMatch[1]).trim();
+        let targetNum = parseInt(targetWord, 10);
+        if (!isNaN(targetNum)) {
+            let h = (targetNum - 1 + 24) % 24;
+            if (isPM && h < 12) h += 12;
+            return `${String(h).padStart(2, '0')}:30`;
+        }
+    }
+
+    // Ubah kata angka ke angka desimal
+    s = replaceIndonesianNumberWords(s);
+
+    // Hapus kata-kata keterangan waktu
+    s = s.replace(/pukul|jam/gi, ' ');
+    s = s.replace(/lewat|lebih|menit|titik/gi, ' ');
+    s = s.replace(/siang|sore|malam|pagi|am|pm/gi, ' ');
+    s = s.replace(/\s+/g, ' ').trim();
+
+    // Format 1: "13:46" atau "13.46"
+    let match = s.match(/(\d{1,2})[:.](\d{1,2})/);
+    // Format 2: "13 46"
+    if (!match) {
+        match = s.match(/(\d{1,2})\s+(\d{1,2})/);
+    }
+    // Format 3: "13" atau "8" (hanya jam, menit 00)
+    if (!match) {
+        match = s.match(/^(\d{1,2})$/);
+    }
+
+    if (match) {
+        let h = parseInt(match[1], 10);
+        let m = match[2] ? parseInt(match[2], 10) : 0;
+
+        if (isPM && h < 12) {
+            if (isSiang && h === 12) {
+                // tetap 12 siang
+            } else {
+                h += 12;
+            }
+        } else if (isAM && h === 12) {
+            h = 0;
+        }
+
+        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+    }
+
+    return null;
+}
+
+// Helper: mencocokkan dan mengisi Kategori Masalah secara cerdas
+function matchAndSetCategory(query) {
+    if (!query) return false;
+    let q = query.toLowerCase()
+        .replace(/^(?:isi\s+)?kategori(?:\s+masalah)?(?:\s+(?:spesifik|specific))?(?:\s+(?:isi|adalah|=|\:))?\s*/gi, '')
+        .trim();
+    if (!q) return false;
+
+    const sumberEl = document.getElementById('inputSumber');
+    const katEl = document.getElementById('inputKategori');
+    if (!sumberEl || !katEl) return false;
+
+    let foundCat = null;
+    let targetSumber = null;
+
+    // 1. Cek kecocokan teks langsung pada opsi SUB_CATEGORIES (Metro & Mikrotik)
+    if (typeof SUB_CATEGORIES !== 'undefined') {
+        // Cek Metro
+        for (let cat of (SUB_CATEGORIES["Metro"] || [])) {
+            const catLower = cat.toLowerCase();
+            if (q === catLower || catLower.includes(q) || q.includes(catLower)) {
+                foundCat = cat;
+                targetSumber = "Metro";
+                break;
+            }
+        }
+        // Cek Mikrotik jika belum ketemu
+        if (!foundCat) {
+            for (let cat of (SUB_CATEGORIES["Mikrotik"] || [])) {
+                const catLower = cat.toLowerCase();
+                if (q === catLower || catLower.includes(q) || q.includes(catLower)) {
+                    foundCat = cat;
+                    targetSumber = "Mikrotik";
+                    break;
+                }
+            }
+        }
+    }
+
+    // 2. Cek kata kunci umum untuk Mikrotik
+    if (!foundCat) {
+        const mikrotikKeywords = [
+            { keys: ["cpu", "load", "crash", "reboot", "hang", "overload", "prosesor", "cpu 100"], val: "Router CPU High Load / Crash" },
+            { keys: ["pppoe", "hotspot", "radius", "user login"], val: "PPPoE / Hotspot Server Error" },
+            { keys: ["interface", "sfp", "module", "port", "ether", "eth", "sfp drop"], val: "Interface / SFP Module Error" },
+            { keys: ["routing", "gateway", "misconfig", "route", "ruting", "misconfiguration"], val: "Routing / Gateway Misconfiguration" },
+            { keys: ["power supply", "adaptor", "adapter", "mati total router", "psu"], val: "Power Supply / Adapter Failure" }
+        ];
+        for (let item of mikrotikKeywords) {
+            if (item.keys.some(k => q.includes(k))) {
+                foundCat = item.val;
+                targetSumber = "Mikrotik";
+                break;
+            }
+        }
+    }
+
+    // 3. Cek kata kunci umum untuk Metro
+    if (!foundCat) {
+        const metroKeywords = [
+            { keys: ["intermitten", "intermiten", "flapping", "goyang", "up down", "putus nyambung"], val: "Link Intermitten" },
+            { keys: ["fiber cut", "link down", "putus", "kabel putus", "fo cut", "los", "cut", "down"], val: "Link Down / Fiber Cut" },
+            { keys: ["latency", "packet loss", "loss", "rto", "lambat", "lag", "ping bengkak", "ping tinggi", "ping loss"], val: "High Latency / Packet Loss" },
+            { keys: ["bgp", "peer", "peering", "bgp disconnect", "bgp down"], val: "BGP Peer Disconnected" },
+            { keys: ["power failure", "pop upstream", "pop", "mati lampu pop", "genset pop", "listrik pop"], val: "Power Failure at Pop Upstream" },
+            { keys: ["maintenance", "pemeliharaan", "jadwal mt", "perawatan", "mt provider"], val: "Maintenance Provider" }
+        ];
+        for (let item of metroKeywords) {
+            if (item.keys.some(k => q.includes(k))) {
+                foundCat = item.val;
+                targetSumber = "Metro";
+                break;
+            }
+        }
+    }
+
+    if (foundCat && targetSumber) {
+        if (sumberEl.value !== targetSumber) {
+            sumberEl.value = targetSumber;
+        }
+        updateSubCategoryOptions(foundCat);
+        katEl.value = foundCat;
+        return { sumber: targetSumber, kategori: foundCat };
+    }
+    return false;
+}
+
+// Helper: mencocokkan dan memilih Operator NOC dari dropdown form
+function matchAndSetOperator(query) {
+    if (!query) return false;
+    const opSelect = document.getElementById('inputOperator');
+    if (!opSelect) return false;
+
+    // Bersihkan query dari imbuhan awalan
+    let q = query.toLowerCase()
+        .replace(/^(?:isi|pilih|ganti|set|adalah|yaitu|=|:)\s+/gi, '')
+        .trim();
+
+    // Bersihkan kata awalan "nama operator noc", "nama operator", "operator noc", "operator"
+    q = q.replace(/^(?:nama\s+)?operator(?:nya)?(?:\s+noc)?(?:\s*(?:isi|adalah|yaitu|=|:))?\s*/gi, '').trim();
+
+    if (!q) return false;
+
+    let matchedVal = null;
+    let matchedText = null;
+
+    // 1. Cek kecocokan prioritas nama operator NOC (Faizal, Helpdesk Gokil, NOC Baik)
+    for (let opt of opSelect.options) {
+        if (!opt.value) continue;
+        const optText = opt.text.toUpperCase();
+        
+        // Faizal Iga Pratama
+        if ((q.includes('faizal') || q.includes('iga') || q.includes('pratama')) && 
+            (optText.includes('FAIZAL') || optText.includes('IGA') || optText.includes('PRATAMA'))) {
+            matchedVal = opt.value;
+            matchedText = opt.text;
+            break;
+        }
+        // Helpdesk Gokil
+        if ((q.includes('helpdesk') || q.includes('gokil') || q.includes('help desk')) && 
+            (optText.includes('HELPDESK') || optText.includes('GOKIL'))) {
+            matchedVal = opt.value;
+            matchedText = opt.text;
+            break;
+        }
+        // NOC Baik
+        if ((q.includes('baik') || q === 'noc' || q.includes('noc baik') || q === 'noc engineer') && 
+            (optText.includes('BAIK') || optText.includes('NOC'))) {
+            matchedVal = opt.value;
+            matchedText = opt.text;
+            break;
+        }
+    }
+
+    // 2. Cek kecocokan teks lengkap pada opsi dropdown (untuk nama operator lain dari database)
+    if (!matchedVal) {
+        for (let opt of opSelect.options) {
+            if (!opt.value) continue;
+            const optText = opt.text.toLowerCase();
+            if (optText.includes(q) || q.includes(optText)) {
+                matchedVal = opt.value;
+                matchedText = opt.text;
+                break;
+            }
+        }
+    }
+
+    // 3. Cek kecocokan per kata (kata dengan panjang >= 3 dan bukan kata umum)
+    if (!matchedVal) {
+        const qWords = q.split(/\s+/).filter(w => w.length >= 3 && !['nama', 'operator', 'noc'].includes(w));
+        for (let opt of opSelect.options) {
+            if (!opt.value) continue;
+            const optText = opt.text.toLowerCase();
+            if (qWords.some(w => optText.includes(w))) {
+                matchedVal = opt.value;
+                matchedText = opt.text;
+                break;
+            }
+        }
+    }
+
+    if (matchedVal) {
+        opSelect.value = matchedVal;
+        speakFeedback(`Operator ${matchedText}`);
+        showToast(`Operator NOC: ${matchedText}`, "success");
+        return true;
+    }
+    return false;
+}
+
+let waitingForOperator = false;
+let isBotSpeaking = false;
+let botSpeakingTimer = null;
+
+// Audio feedback instan menggunakan Web Audio API (chime responsif 80ms)
+function playSuccessChime() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.07); // A5
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.16);
+    } catch (e) {}
+}
+
+function getSpeechRecognition() {
+    if (speechRecognitionInstance) return speechRecognitionInstance;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        return null;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'id-ID';
+    recognition.continuous = true; // Mode continuous agar respon seketika tanpa delay restart
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+        isVoiceListening = true;
+        updateVoiceUI(true);
+    };
+
+    recognition.onresult = (event) => {
+        if (isBotSpeaking) return; // Cegah mic menangkap suara bot sendiri
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const res = event.results[i];
+            const transcript = res[0].transcript.trim();
+            if (res.isFinal) {
+                const overlayText = document.getElementById('voiceRecognizedText');
+                if (overlayText) overlayText.innerText = `"${transcript}"`;
+                handleVoiceCommand(transcript);
+            } else {
+                const overlayText = document.getElementById('voiceRecognizedText');
+                if (overlayText) overlayText.innerText = `"${transcript}"...`;
+            }
+        }
+    };
+
+    recognition.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        if (event.error === 'not-allowed') {
+            showToast("Izin mikrofon tidak diberikan. Silakan aktifkan izin mikrofon di browser Anda.", "error");
+            stopFormVoiceAssistant();
+        } else if (event.error === 'no-speech') {
+            return;
+        } else {
+            console.warn("Speech error: " + event.error);
+        }
+    };
+
+    recognition.onend = () => {
+        if (isFormVoiceActive || isVoiceListening) {
+            try { recognition.start(); } catch (e) {}
+        } else {
+            isVoiceListening = false;
+            updateVoiceUI(false);
+        }
+    };
+
+    speechRecognitionInstance = recognition;
+    return speechRecognitionInstance;
+}
+
+function updateVoiceUI(active) {
+    const btn = document.getElementById('btnVoiceCommand');
+    const overlay = document.getElementById('voiceOverlay');
+    const icon = document.getElementById('voiceMicIcon');
+    const overlayText = document.getElementById('voiceRecognizedText');
+
+    if (active) {
+        if (btn) btn.classList.add('voice-pulse-active');
+        if (icon) icon.className = 'fa-solid fa-microphone-lines text-lg animate-pulse';
+        if (overlay) overlay.classList.remove('hidden');
+        if (overlayText) overlayText.innerText = currentDictationTarget ? '(Mode Dikte Teks...)' : '';
+    } else {
+        if (btn) btn.classList.remove('voice-pulse-active');
+        if (icon) icon.className = 'fa-solid fa-microphone text-lg';
+        if (overlay) overlay.classList.add('hidden');
+        if (overlayText) overlayText.innerText = '';
+    }
+}
+
+function toggleVoiceCommand(forceStart) {
+    const recognition = getSpeechRecognition();
+    if (!recognition) {
+        showToast("Browser Anda belum mendukung Web Speech API. Silakan gunakan Google Chrome atau Microsoft Edge.", "error");
+        return;
+    }
+
+    if (isVoiceListening && forceStart !== true) {
+        stopVoiceListening();
+    } else {
+        startVoiceListening();
+    }
+}
+
+function startVoiceListening() {
+    const recognition = getSpeechRecognition();
+    if (!recognition) return;
+
+    try {
+        recognition.start();
+    } catch (e) {}
+}
+
+function stopVoiceListening() {
+    isVoiceListening = false;
+    currentDictationTarget = null;
+    updateVoiceUI(false);
+    if (speechRecognitionInstance) {
+        try { speechRecognitionInstance.stop(); } catch (e) {}
+    }
+}
+
+function continueListeningIfFormActive() {
+    if (!isFormVoiceActive) return;
+
+    const incidentModal = document.getElementById('incidentModal');
+    const coverageModal = document.getElementById('coverageModal');
+    const isIncidentOpen = incidentModal && !incidentModal.classList.contains('hidden');
+    const isCoverageOpen = coverageModal && !coverageModal.classList.contains('hidden');
+
+    if (!isIncidentOpen && !isCoverageOpen) {
+        stopFormVoiceAssistant();
+        return;
+    }
+
+    if (!isVoiceListening) {
+        startVoiceListening();
+    }
+}
+
+function toggleFormVoiceAssistant() {
+    if (isFormVoiceActive) {
+        stopFormVoiceAssistant();
+        speakFeedback("Mode suara dinonaktifkan");
+        showToast("Mode suara form dinonaktifkan.", "info");
+    } else {
+        startFormVoiceAssistant();
+    }
+}
+
+function startFormVoiceAssistant() {
+    isFormVoiceActive = true;
+    updateFormVoiceUI(true);
+    speakFeedback("Mode suara siap");
+    startVoiceListening();
+    showToast("Mode suara aktif! Sebutkan pilihan kolom langsung (Faizal, Metro, Putus, Resolved, dll)", "info");
+}
+
+function stopFormVoiceAssistant() {
+    isFormVoiceActive = false;
+    updateFormVoiceUI(false);
+    stopVoiceListening();
+}
+
+function updateFormVoiceUI(active) {
+    const btn = document.getElementById('btnVoiceFormAssistant');
+    const banner = document.getElementById('voiceFormBanner');
+    const btnText = document.getElementById('voiceFormBtnText');
+
+    if (btn) {
+        if (active) {
+            btn.className = 'bg-rose-600 hover:bg-rose-700 text-white border border-rose-600 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center transition shadow-md animate-pulse';
+            if (btnText) btnText.textContent = 'Mendengarkan (Klik Stop)';
+        } else {
+            btn.className = 'bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center transition shadow-sm';
+            if (btnText) btnText.textContent = 'Isi Form Pakai Suara';
+        }
+    }
+
+    if (banner) {
+        if (active) banner.classList.remove('hidden');
+        else banner.classList.add('hidden');
+    }
+}
+
+function speakFeedback(text, callback) {
+    playSuccessChime();
+    if (!('speechSynthesis' in window)) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    try {
+        window.speechSynthesis.cancel();
+        if (botSpeakingTimer) clearTimeout(botSpeakingTimer);
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'id-ID';
+        utterance.rate = 1.3; // Sangat cepat & responsif
+        utterance.pitch = 1.0;
+
+        isBotSpeaking = true;
+        utterance.onstart = () => { isBotSpeaking = true; };
+        utterance.onend = () => {
+            botSpeakingTimer = setTimeout(() => { isBotSpeaking = false; }, 180);
+            if (typeof callback === 'function') callback();
+        };
+        utterance.onerror = () => {
+            isBotSpeaking = false;
+            if (typeof callback === 'function') callback();
+        };
+        window.speechSynthesis.speak(utterance);
+    } catch (e) {
+        isBotSpeaking = false;
+        if (typeof callback === 'function') callback();
+    }
+}
+
+function startDictation(elementId) {
+    currentDictationTarget = elementId;
+    toggleVoiceCommand(true);
+    showToast("Silakan bicara untuk mendiktekan teks ke form...", "info");
+}
+
+function openVoiceHelpModal() {
+    const modal = document.getElementById('voiceHelpModal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeVoiceHelpModal() {
+    const modal = document.getElementById('voiceHelpModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function handleVoiceCommand(rawTranscript) {
+    if (!rawTranscript) return;
+
+    // Bersihkan tanda baca di akhir kalimat yang dihasilkan Speech API
+    const cleanTranscript = rawTranscript.trim().replace(/[.,!?:;]+$/, '').trim();
+    const text = cleanTranscript.toLowerCase();
+
+    // 1. MODE DIKTE KE INPUT FORM LANGSUNG (jika tombol Dikte Suara diklik atau sebut "Keterangan")
+    if (currentDictationTarget) {
+        if (/^(?:simpan|save|submit|batal|tutup|cancel)$/i.test(text)) {
+            currentDictationTarget = null;
+        } else {
+            const targetEl = document.getElementById(currentDictationTarget);
+            if (targetEl) {
+                const dictText = cleanTranscript.replace(/^(?:keterangan(?:nya)?|catatan(?:nya)?)\s*(?::|=|\s+)?/i, '').trim() || cleanTranscript;
+                targetEl.value = dictText.toUpperCase();
+                showToast(`Keterangan: "${targetEl.value}"`, "success");
+                speakFeedback("Keterangan dicatat");
+            }
+            currentDictationTarget = null;
+            if (isFormVoiceActive) {
+                continueListeningIfFormActive();
+            }
+            return;
+        }
+    }
+
+    showToast(`Perintah: "${cleanTranscript}"`, "info");
+
+    const incidentModal = document.getElementById('incidentModal');
+    const coverageModal = document.getElementById('coverageModal');
+    const isIncidentOpen = incidentModal && !incidentModal.classList.contains('hidden');
+    const isCoverageOpen = coverageModal && !coverageModal.classList.contains('hidden');
+
+    // Jika modal input sedang terbuka dan perintah suara dipanggil, aktifkan mode suara form
+    if ((isIncidentOpen || isCoverageOpen) && !isFormVoiceActive) {
+        isFormVoiceActive = true;
+        updateFormVoiceUI(true);
+    }
+
+    // Cek jika sistem sedang menunggu nama operator dari langkah sebelumnya
+    if (waitingForOperator && isIncidentOpen) {
+        const success = matchAndSetOperator(cleanTranscript);
+        if (success) {
+            waitingForOperator = false;
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // ====================================================
+    // A. PERINTAH KHUSUS PENGISIAN FORM (HANDS-FREE INPUT)
+    // ====================================================
+
+    // 1. SIMPAN LAPORAN / UPDATE REPORT
+    const isSaveCommand = /^(?:simpan|save|submit|kirim|update|oke\s+simpan)(?:\s+(?:laporan|report|tiket|data))?$/i.test(text);
+    if (isSaveCommand || text.includes("simpan laporan") || text.includes("simpan report") || text.includes("update report")) {
+        waitingForOperator = false;
+        if (isIncidentOpen) {
+            const btnSubmit = document.getElementById('btnSubmit');
+            if (btnSubmit) btnSubmit.click();
+            speakFeedback("Laporan disimpan");
+            stopFormVoiceAssistant();
+            return;
+        } else if (isCoverageOpen) {
+            const form = document.getElementById('coverageForm');
+            if (form) form.requestSubmit();
+            speakFeedback("Request coverage disimpan");
+            stopFormVoiceAssistant();
+            return;
+        }
+    }
+
+    // 2. TUTUP / BATAL FORM & MODAL
+    const isCancelCommand = /^(?:batal|tutup|cancel|close|kembali|keluar)(?:\s+(?:form|modal|laporan))?$/i.test(text);
+    if (isCancelCommand || text.includes("tutup form") || text.includes("tutup modal")) {
+        waitingForOperator = false;
+        closeIncidentModal();
+        closeCoverageModal();
+        closeModal();
+        closeExportModal();
+        closeVoiceHelpModal();
+        stopFormVoiceAssistant();
+        speakFeedback("Dibatalkan");
+        return;
+    }
+
+    // 3. KETERANGAN / ROOT CAUSE (Prioritas tinggi agar tidak terpotong oleh kategori)
+    // Format: "Keterangan [isi]", "Keterangan: [isi]", atau cukup sebut "Keterangan"
+    const ketMatch = cleanTranscript.match(/^(?:isi\s+)?(?:keterangan(?:nya)?|catatan(?:nya)?|pesan|root\s*cause|troubleshoot(?:ing)?)(?:\s*(?:isi|adalah|yaitu|=|\:))?(?:\s+(.+))?$/i);
+    if (ketMatch || text === "keterangan" || text === "isi keterangan" || text === "catatan" || text === "keterangannya") {
+        const val = ketMatch && ketMatch[1] ? ketMatch[1].trim() : '';
+        const el = document.getElementById('inputKeterangan');
+        if (val) {
+            if (el) el.value = val.toUpperCase();
+            speakFeedback("Keterangan dicatat");
+            showToast(`Keterangan: "${val.toUpperCase()}"`, "success");
+            continueListeningIfFormActive();
+            return;
+        } else {
+            // User hanya menyebut "Keterangan" tanpa isi -> buka mode dikte kolom keterangan
+            currentDictationTarget = 'inputKeterangan';
+            speakFeedback("Silakan sebutkan isi keterangannya");
+            showToast("Silakan sebutkan isi keterangannya...", "info");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 4. OPERATOR NOC / NAMA OPERATOR (Prioritas tinggi agar tidak tertabrak nama mitra)
+    // Format: "Nama operator [siapa]", "Operator NOC [siapa]", "Operator [siapa]", atau cukup sebut "Nama operator"
+    const opMatch = cleanTranscript.match(/^(?:isi\s+)?(?:nama\s+)?operator(?:nya)?(?:\s+noc)?(?:\s*(?:isi|adalah|yaitu|=|\:))?(?:\s+(.+))?$/i);
+    if (opMatch || text === "nama operator" || text === "operator" || text === "operator noc" || text === "nama operator noc" || text === "nama operatornya") {
+        const val = opMatch && opMatch[1] ? opMatch[1].trim() : '';
+        if (val) {
+            const success = matchAndSetOperator(val);
+            if (success) {
+                waitingForOperator = false;
+                continueListeningIfFormActive();
+                return;
+            }
+        } else {
+            // User hanya menyebut "Nama operator" tanpa nama -> beri panduan pilihan nama
+            waitingForOperator = true;
+            speakFeedback("Sebutkan nama operatornya: Faizal, NOC Baik, atau Helpdesk Gokil");
+            showToast("Sebutkan nama: Faizal, NOC Baik, atau Helpdesk Gokil", "info");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 5. STATUS TIKET (Contoh: "Status tiket resolved", "Status tiket pending", "Status tiket selesai", atau langsung "Pending" / "Selesai")
+    const isStatusPending = /^(?:status(?:\s+tiket)?\s+)?(?:pending|progress|in\s+progress|belum|belum\s+selesai|open)$/i.test(text) || (text.includes("status") && (text.includes("pending") || text.includes("progress") || text.includes("belum")));
+    const isStatusResolved = /^(?:status(?:\s+tiket)?\s+)?(?:resolved|solved|selesai|closed|kelar)$/i.test(text) || (text.includes("status") && (text.includes("resolved") || text.includes("solved") || text.includes("selesai")));
+    if ((isStatusPending || isStatusResolved) && isIncidentOpen) {
+        const statusEl = document.getElementById('inputStatus');
+        if (statusEl) {
+            statusEl.value = isStatusResolved ? 'Resolved' : 'Pending';
+            handleStatusChange();
+            speakFeedback(`Status ${statusEl.value}`);
+            showToast(`Status Tiket: ${statusEl.value}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 6. SUMBER MASALAH (Bisa sebut "Sumber masalah Mikrotik" atau cukup "Mikrotik" / "Metro"!)
+    if (text === "mikrotik" || text === "sumber mikrotik" || text === "sumber masalah mikrotik" || text === "sisi mikrotik" || text === "internal" || (text.includes("sumber") && text.includes("mikrotik"))) {
+        const el = document.getElementById('inputSumber');
+        if (el) {
+            el.value = "Mikrotik";
+            updateSubCategoryOptions();
+            speakFeedback("Sumber Mikrotik");
+            showToast("Sumber Masalah: Mikrotik", "success");
+            continueListeningIfFormActive();
+            return;
+        }
+    } else if (text === "metro" || text === "sumber metro" || text === "sumber masalah metro" || text === "sisi metro" || text === "external" || text === "eksternal" || (text.includes("sumber") && text.includes("metro"))) {
+        const el = document.getElementById('inputSumber');
+        if (el) {
+            el.value = "Metro";
+            updateSubCategoryOptions();
+            speakFeedback("Sumber Metro");
+            showToast("Sumber Masalah: Metro", "success");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 7. KATEGORI MASALAH SPECIFIC (Format: "Kategori masalah [masalah]", "Kategori [masalah]", atau kata kunci masalah)
+    const katMatch = cleanTranscript.match(/^(?:isi\s+)?kategori(?:\s+masalah)?(?:\s+(?:spesifik|specific))?(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+    const catQuery = katMatch ? katMatch[1] : (text.startsWith("kategori ") ? text.replace(/^kategori\s+/i, '') : null);
+    if (catQuery) {
+        const res = matchAndSetCategory(catQuery);
+        if (res) {
+            speakFeedback(`Kategori ${res.kategori}`);
+            showToast(`Kategori: ${res.kategori}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // Jika sedang di form laporan dan menyebutkan kata kunci masalah langsung tanpa awalan "kategori"
+    if (isIncidentOpen) {
+        const directCatMatch = matchAndSetCategory(cleanTranscript);
+        if (directCatMatch) {
+            speakFeedback(`Kategori ${directCatMatch.kategori}`);
+            showToast(`Kategori: ${directCatMatch.kategori}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 8. JAM KEJADIAN / START TIME
+    // Format: "Jam kejadian 13 46", "Mulai 13 46", "Start 13 46", "Jam 13 46"
+    const jamMulaiMatch = cleanTranscript.match(/^(?:isi\s+)?(?:jam\s+(?:kejadian|mulai|start|awal)|mulai|start|awal|jam)(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+    if (jamMulaiMatch) {
+        const parsed = parseSpokenTimeToHHMM(jamMulaiMatch[1]);
+        if (parsed) {
+            const el = document.getElementById('inputJamMulai');
+            if (el) {
+                el.value = parsed;
+                calculateDowntime();
+                speakFeedback(`Mulai ${parsed}`);
+                showToast(`Jam Kejadian (Start): ${parsed}`, "success");
+                continueListeningIfFormActive();
+                return;
+            }
+        }
+    }
+
+    // 9. JAM SOLVED / JAM SELESAI
+    // Format: "Jam solved 14 21", "Selesai 14 21", "Solved 14 21", "Kelar 14 21"
+    const jamSelesaiMatch = cleanTranscript.match(/^(?:isi\s+)?(?:jam\s+(?:solved|selesai|end|penyelesaian|kelar)|solved|selesai|kelar|end)(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+    if (jamSelesaiMatch) {
+        const parsed = parseSpokenTimeToHHMM(jamSelesaiMatch[1]);
+        if (parsed) {
+            const el = document.getElementById('inputJamSelesai');
+            if (el) {
+                el.value = parsed;
+                const statusEl = document.getElementById('inputStatus');
+                if (statusEl && statusEl.value !== 'Resolved') {
+                    statusEl.value = 'Resolved';
+                }
+                calculateDowntime();
+                speakFeedback(`Selesai ${parsed}`);
+                showToast(`Jam Solved (End): ${parsed}`, "success");
+                continueListeningIfFormActive();
+                return;
+            }
+        }
+    }
+
+    // 10. WAKTU LANGSUNG (User hanya menyebutkan jam angka, misal "13 46" atau "14:21")
+    if (isIncidentOpen) {
+        const pureTimeParsed = parseSpokenTimeToHHMM(cleanTranscript);
+        if (pureTimeParsed) {
+            const jamMulaiEl = document.getElementById('inputJamMulai');
+            const jamSelesaiEl = document.getElementById('inputJamSelesai');
+            if (jamMulaiEl && !jamMulaiEl.value) {
+                jamMulaiEl.value = pureTimeParsed;
+                calculateDowntime();
+                speakFeedback(`Mulai ${pureTimeParsed}`);
+                showToast(`Jam Kejadian (Start): ${pureTimeParsed}`, "success");
+                continueListeningIfFormActive();
+                return;
+            } else if (jamSelesaiEl) {
+                jamSelesaiEl.value = pureTimeParsed;
+                const statusEl = document.getElementById('inputStatus');
+                if (statusEl && statusEl.value !== 'Resolved') statusEl.value = 'Resolved';
+                calculateDowntime();
+                speakFeedback(`Selesai ${pureTimeParsed}`);
+                showToast(`Jam Solved (End): ${pureTimeParsed}`, "success");
+                continueListeningIfFormActive();
+                return;
+            }
+        }
+    }
+
+    // 11. NAMA MITRA / CLIENT (Contoh: "Nama mitra Iganet", "Mitra Iganet", "Client Iganet")
+    const mitraMatch = cleanTranscript.match(/^(?:isi\s+)?(?:nama\s+)?(?:mitra|client|klien)(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+    if (mitraMatch || (text.startsWith("nama ") && !text.startsWith("nama operator"))) {
+        const val = mitraMatch ? mitraMatch[1].trim() : cleanTranscript.replace(/^nama\s+/i, '').trim();
+        if (isCoverageOpen) {
+            const covEl = document.getElementById('covMitra');
+            if (covEl) covEl.value = val.toUpperCase();
+        } else {
+            const el = document.getElementById('inputMitra');
+            if (el) el.value = val.toUpperCase();
+        }
+        speakFeedback(`Mitra ${val}`);
+        showToast(`Nama Mitra: "${val.toUpperCase()}"`, "success");
+        continueListeningIfFormActive();
+        return;
+    }
+
+    // 12. ID PELANGGAN / IP GATEWAY (Contoh: "ID pelanggan 109", "ID 109", "IP 10.20.1.1", "Nomor 109")
+    const idMatch = cleanTranscript.match(/^(?:isi\s+)?(?:id\s+pelanggan|id\s+klien|ip\s+gateway|nomor\s+pelanggan|id|ip|nomor|no)(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+    if (idMatch) {
+        const val = idMatch[1].trim().toUpperCase();
+        const el = document.getElementById('inputIdPelanggan');
+        if (el) el.value = val;
+        speakFeedback(`ID ${val}`);
+        showToast(`ID Pelanggan: "${val}"`, "success");
+        continueListeningIfFormActive();
+        return;
+    }
+
+    // Jika di dalam modal dan user menyebut angka pendek (misal "109", "452", "0042")
+    if (isIncidentOpen && /^\d+$/.test(cleanTranscript.trim()) && cleanTranscript.trim().length <= 6) {
+        const val = cleanTranscript.trim();
+        const el = document.getElementById('inputIdPelanggan');
+        if (el) el.value = val;
+        speakFeedback(`ID ${val}`);
+        showToast(`ID Pelanggan: "${val}"`, "success");
+        continueListeningIfFormActive();
+        return;
+    }
+
+    // 13. TANGGAL KEJADIAN & TANGGAL SELESAI (Contoh: "Tanggal hari ini", "Tanggal kemarin", "Tanggal selesai hari ini", "Tanggal 11")
+    if (text.includes("tanggal") || text.includes("tgl")) {
+        const d = new Date();
+        if (text.includes("kemarin")) {
+            d.setDate(d.getDate() - 1);
+        } else if (text.includes("besok")) {
+            d.setDate(d.getDate() + 1);
+        }
+
+        const specificDateMatch = text.match(/(\d{4}[-\/]\d{1,2}[-\/]\d{1,2})|(\d{1,2}[-\/]\d{1,2}[-\/]\d{4})/);
+        let dateStr = '';
+        if (specificDateMatch) {
+            dateStr = parseDateToYYYYMMDD(specificDateMatch[0]);
+        } else {
+            const dayOnlyMatch = text.match(/(?:tanggal|tgl)\s+(\d{1,2})\b/);
+            if (dayOnlyMatch && !text.includes("hari ini") && !text.includes("kemarin")) {
+                const dayNum = parseInt(dayOnlyMatch[1], 10);
+                if (dayNum >= 1 && dayNum <= 31) {
+                    d.setDate(dayNum);
+                }
+            }
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            dateStr = `${yyyy}-${mm}-${dd}`;
+        }
+
+        if (text.includes("selesai") || text.includes("solved") || text.includes("end")) {
+            const el = document.getElementById('inputTanggalSelesai');
+            if (el) el.value = dateStr;
+            calculateDowntime();
+            speakFeedback(`Tanggal selesai ${dateStr}`);
+            showToast(`Tanggal Selesai: ${dateStr}`, "success");
+            continueListeningIfFormActive();
+            return;
+        } else {
+            const el = document.getElementById('inputTanggal');
+            if (el) el.value = dateStr;
+            const elEnd = document.getElementById('inputTanggalSelesai');
+            if (elEnd && !elEnd.value) elEnd.value = dateStr;
+            calculateDowntime();
+            speakFeedback(`Tanggal ${dateStr}`);
+            showToast(`Tanggal Kejadian: ${dateStr}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 14. DIRECT OPERATOR NAME FALLBACK (Jika user langsung menyebutkan salah satu nama operator di dropdown)
+    if (isIncidentOpen) {
+        const directOpMatch = matchAndSetOperator(cleanTranscript);
+        if (directOpMatch) {
+            waitingForOperator = false;
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 15. INPUT FOCUSED FALLBACK (Jika user sedang klik kolom tertentu di layar)
+    if (document.activeElement && ['inputMitra', 'inputIdPelanggan', 'inputKeterangan', 'covMitra', 'covKapasitas', 'covTikor'].includes(document.activeElement.id)) {
+        document.activeElement.value = cleanTranscript.toUpperCase();
+        speakFeedback(`Diisi ${cleanTranscript}`);
+        showToast(`Input diisi: "${cleanTranscript}"`, "success");
+        continueListeningIfFormActive();
+        return;
+    }
+
+    // 16. AUTO-FILL SMART FALLBACK SAAT FORM BUKA:
+    // Jika modal laporan buka dan nama mitra masih kosong, ucapan pertama user otomatis jadi nama mitra!
+    if (isIncidentOpen) {
+        const mitraInput = document.getElementById('inputMitra');
+        if (mitraInput && !mitraInput.value.trim() && cleanTranscript.length >= 3) {
+            mitraInput.value = cleanTranscript.toUpperCase();
+            speakFeedback(`Mitra ${cleanTranscript}`);
+            showToast(`Nama Mitra: "${cleanTranscript.toUpperCase()}"`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+    }
+
+    // 17. PERINTAH KHUSUS FORM REQUEST COVERAGE
+    if (isCoverageOpen) {
+        // Kapasitas Bandwidth (Contoh: "Kapasitas 100 Mbps", "Bandwidth 1 Gbps")
+        const kapMatch = cleanTranscript.match(/^(?:isi\s+)?(?:kapasitas|bandwidth)(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+        if (kapMatch) {
+            const val = kapMatch[1].trim().toUpperCase();
+            const el = document.getElementById('covKapasitas');
+            if (el) el.value = val;
+            speakFeedback(`Kapasitas ${val}`);
+            showToast(`Kapasitas: ${val}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+
+        // Tikor / Koordinat
+        const tikorMatch = cleanTranscript.match(/^(?:isi\s+)?(?:tikor|titik\s+koordinat|koordinat|lokasi)(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+        if (tikorMatch) {
+            const val = tikorMatch[1].trim();
+            const el = document.getElementById('covTikor');
+            if (el) el.value = val;
+            speakFeedback("Koordinat dicatat");
+            showToast(`Tikor: ${val}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+
+        // Tikor BTS / POP Terdekat
+        const btsMatch = cleanTranscript.match(/^(?:isi\s+)?(?:tikor\s+bts|bts|pop)(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+        if (btsMatch) {
+            const val = btsMatch[1].trim();
+            const el = document.getElementById('covTikorBts');
+            if (el) el.value = val.toUpperCase();
+            speakFeedback(`BTS ${val}`);
+            showToast(`BTS: ${val}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+
+        // Jarak
+        const jarakMatch = cleanTranscript.match(/^(?:isi\s+)?jarak(?:\s+(?:isi|adalah|=|\:))?\s+(.+)$/i);
+        if (jarakMatch) {
+            const val = jarakMatch[1].trim().toUpperCase();
+            const el = document.getElementById('covJarak');
+            if (el) el.value = val;
+            speakFeedback(`Jarak ${val}`);
+            showToast(`Jarak: ${val}`, "success");
+            continueListeningIfFormActive();
+            return;
+        }
+
+        // Pilih Vendor (Telkom, XL, Indosat, Fiber Star, HSP, Lintasarta, iForte)
+        const vendorNames = ["Telkom", "XL", "Indosat", "Fiber Star", "HSP", "Lintasarta", "iForte"];
+        for (let vName of vendorNames) {
+            if (text.includes(vName.toLowerCase())) {
+                const cb = document.querySelector(`input[name="ispVendor"][value="${vName}"]`);
+                if (cb) {
+                    cb.checked = !cb.checked;
+                    speakFeedback(`Vendor ${vName} ${cb.checked ? 'dipilih' : 'dibatalkan'}`);
+                    showToast(`Vendor ${vName}: ${cb.checked ? 'Dipilih' : 'Dibatalkan'}`, "info");
+                    continueListeningIfFormActive();
+                    return;
+                }
+            }
+        }
+    }
+
+    // ====================================================
+    // B. NAVIGASI, FILTER & PERINTAH GLOBAL
+    // ====================================================
+
+    // 1. NAVIGASI HALAMAN
+    if (text.includes("coverage") || text.includes("koverej") || text.includes("cek cover")) {
+        switchNav('coverage');
+        speakFeedback("Halaman coverage");
+    } else if (text.includes("dashboard") || text.includes("dasbor") || text.includes("beranda") || text.includes("insiden")) {
+        switchNav('dashboard');
+        speakFeedback("Dashboard");
+    }
+    // 2. BUKA MODAL FORM LAPORAN
+    else if (text.includes("buat laporan") || text.includes("input laporan") || text.includes("input gangguan") || text.includes("tambah tiket") || text.includes("input tiket") || text.includes("lapor gangguan")) {
+        openIncidentModal();
+        startFormVoiceAssistant();
+    }
+    // 3. BUKA MODAL REQUEST COVERAGE
+    else if (text.includes("input coverage") || text.includes("request coverage") || text.includes("input tikor") || text.includes("cek tikor") || text.includes("tambah coverage")) {
+        openCoverageModal();
+        startFormVoiceAssistant();
+    }
+    // 4. EXPORT EXCEL
+    else if (text.includes("export excel") || text.includes("ekspor excel") || text.includes("download excel") || text.includes("unduh excel")) {
+        openExportModal();
+        speakFeedback("Ekspor excel");
+    }
+    // 5. PENCARIAN CEPAT (VOICE SEARCH)
+    else if (text.startsWith("cari ") || text.startsWith("temukan ") || text.startsWith("filter ")) {
+        const query = text.replace(/^(cari|temukan|filter)\s+/i, '').trim();
+        const mainView = document.getElementById('mainDashboardView');
+        if (mainView && !mainView.classList.contains('hidden')) {
+            const filterEl = document.getElementById('filterSearch');
+            if (filterEl) {
+                filterEl.value = query;
+                renderApp();
+            }
+        } else {
+            const covFilter = document.getElementById('filterCoverageSearch');
+            if (covFilter) {
+                covFilter.value = query;
+                renderCoverageTable();
+            }
+        }
+        speakFeedback(`Mencari ${query}`);
+    }
+    // 6. RESET FILTER
+    else if (text.includes("reset filter") || text.includes("hapus filter") || text.includes("hapus pencarian") || text.includes("bersihkan filter")) {
+        clearFilter();
+        const covFilter = document.getElementById('filterCoverageSearch');
+        if (covFilter) { covFilter.value = ''; renderCoverageTable(); }
+        speakFeedback("Filter dibersihkan");
+    }
+    // 7. BACKUP DATA
+    else if (text.includes("backup json") || text.includes("backup data") || text.includes("download backup")) {
+        backupJSON();
+    }
+    // 8. BANTUAN
+    else if (text.includes("bantuan") || text.includes("help") || text.includes("perintah suara") || text.includes("daftar perintah")) {
+        openVoiceHelpModal();
+        speakFeedback("Panduan perintah suara");
+    }
+    // 9. PERINTAH BELUM DIKENALI
+    else {
+        showToast(`Perintah "${cleanTranscript}" belum dikenali. Coba: "Nama operator [X]", "Keterangan [X]", "Simpan"`, "warning");
+        speakFeedback("Perintah belum dikenali.");
+        if (isFormVoiceActive) {
+            continueListeningIfFormActive();
+        }
+    }
+}
+
